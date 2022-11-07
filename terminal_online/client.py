@@ -13,6 +13,8 @@ client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 #input("Press any key to start running...")
 print("running...")
 
+
+# while try except loop here so that after opening and running, program doesn't crash
 client.connect(ADDR)
 
 # setup

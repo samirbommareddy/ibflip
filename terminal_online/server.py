@@ -5,7 +5,6 @@ from network import *
 
 
 player_count = 0
-client_list = []
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.bind(ADDR)
@@ -13,8 +12,6 @@ server.bind(ADDR)
 def handle_client(clientsocket, addr):
 
     print(f"[NEW CONNECTION] {addr} connected.")
-
-    client_list.append(client_list)
 
     global player_count
     playerID = player_count
