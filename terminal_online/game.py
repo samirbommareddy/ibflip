@@ -6,6 +6,7 @@
 - bugs
 - consistent style of writing across
 - check infodump (notes above last_turn)
+- sort hand after each turn
 
 """
 
