@@ -7,6 +7,16 @@
 - consistent style of writing across
 - check infodump (notes above last_turn)
 - sort hand after each turn
+- PP8 rules (variable names), ex playerList = player_list, newRound --> new_round
+    - microsoft codecomplete - how to name variables
+- inputting data is still very buggy
+- write explanation for all functions
+- code reduction: define functions for certain parts of code
+- show tophand at beginning
+- userfriendly error code: try, except blocks.
+- learn git
+- !!!code according to rules in p-uppgift (follow carefully)
+- CODE NEEDS a lot of editing
 
 """
 
@@ -29,7 +39,7 @@ class Deck(list):
         pass
 
     def build(self):
-        """52 cards (4 suits of 13 cards each) with are added to deck (self)"""
+        """52 cards (type Card) (4 suits of 13 cards each) are added to deck (self)"""
         for suit in ["Hearts", "Diamonds", "Clubs", "Spades"]:
             for val in range(2, 15):
                 self.append(Card(suit, val))
@@ -780,7 +790,7 @@ def flipping(player):
                 if len(available_cards) >= len(playerList) - 1:
                     for opp in oppList(player):
                         cheatDeck(available_cards[0].suit, available_cards[0].val, player.hand, discardDeck)
-        
+
 
             elif val == 4:
                 turn = nextTurn(turn, 0, clockwise, playerList)
