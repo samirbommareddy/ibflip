@@ -2,7 +2,7 @@ import socket
 import time
 
 HEADER = 1024
-PORT = 5555
+PORT = 8080
 FORMAT = 'utf-8'
 DISCONNECT_MESSAGE = "!DISCONNECT"
 SERVER = "192.168.56.1"

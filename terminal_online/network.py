@@ -1,7 +1,7 @@
 import socket
 
 HEADER = 1024
-PORT = 5555
+PORT = 8080
 SERVER = socket.gethostbyname(socket.gethostname())
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
