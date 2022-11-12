@@ -17,6 +17,7 @@
 - learn git
 - !!!code according to rules in p-uppgift (follow carefully)
 - CODE NEEDS a lot of editing
+- last cards for new round returns empty
 
 """
 
@@ -326,8 +327,8 @@ def readval(val):
 
 def opp_done(player, playerList):
     """checks if attribute done for all players other thatn parameter player is True or False. Returns True if all are True. Else False"""
-    check_list = []
-    temp = list(playerList)
+    check_list = [] 
+    temp = list(playerList) # change to opp function
     temp.remove(player)
     for opp in temp:
         if opp.done == True: check_list.append(True)
@@ -378,6 +379,7 @@ def terminal_fixhand(player, clientsocket):
         message = "".join(msg)
         clientsocket.send(message.encode(FORMAT))
 
+        time.sleep(0.25)
         clientsocket.send("----Do you want to fix (switch/double up) any cards? (y/n) : ".encode(FORMAT))
         input_decision = clientsocket.recv(HEADER).decode(FORMAT)
 
@@ -388,10 +390,15 @@ def terminal_fixhand(player, clientsocket):
             
         elif input_decision == 'y':
 
+            time.sleep(1)
             clientsocket.send("----\nWhich card in your hand do you want to fix? (0, 1, 2) : ".encode(FORMAT))
             index_hand = clientsocket.recv(HEADER).decode(FORMAT)
+
+            time.sleep(0.25)
             clientsocket.send("----\nWhich card index of your faceup cards do you want to fix? (0, 1, 2) : ".encode(FORMAT))
             index_top = clientsocket.recv(HEADER).decode(FORMAT)
+
+            time.sleep(0.25)
             clientsocket.send("----\nDo you want to switch or double? (s/d) : ".encode(FORMAT))
             switch_decision = clientsocket.recv(HEADER).decode(FORMAT)
 
@@ -443,6 +450,7 @@ def terminal_fixhand(player, clientsocket):
                 clientsocket.send(message.encode(FORMAT))
 
                 while True:
+                    time.sleep(0.25)
                     clientsocket.send("----\nDo you want to continue fixing cards? (y/n) : ".encode(FORMAT))
                     decision_continue = clientsocket.recv(HEADER).decode(FORMAT)
 
@@ -470,6 +478,8 @@ def gamestart_lowestcard(player, playerList, clientsocket):
     if player.turn == True:
 
         clientsocket.send(f"\nYou have the lowest card -- {cardName(player.hand[card_index])}".encode(FORMAT))
+
+        time.sleep(0.25)
         clientsocket.send("----\nPress enter to play it...".encode(FORMAT))
         clientsocket.recv(HEADER).decode(FORMAT)
 
@@ -537,8 +547,8 @@ def infoDump():
         #WILL GIVE ERROR SINCE LAST_CARDS NOT DEFINED, FIRST ROUND IS ALSO NOT NEW ROUND
         if newRound == False:
             message.append("\n Cards played last turn : ")
-            for card in last_cards:
-                message.append(cardName + " ,  ")
+            for last_card in last_cards:
+                message.append(cardName(last_card) + " ,  ")
         
         temp = list(playerList)
         temp.remove(player)
@@ -613,6 +623,7 @@ def playHand(play_list, playable_index, player, playDeck):
         temp2 = []
         temp3 = []
 
+        time.sleep(0.25)
         player.client.send("----\nWhich card(s) would you like to play? (format = 'number, number' etc.) : ".encode(FORMAT))
         play_input = player.client.recv(HEADER).decode(FORMAT)
 
@@ -651,7 +662,8 @@ def drawNotPlayableHand(player, gameDeck, playable_cards, playable_index):
     while True:
         """allows only y or n as input"""
         
-        player.client.send("\nYou cannot play. Would you like to draw a card and test if it can be played? (y/n) : ".encode(FORMAT))
+        time.sleep(0.25)
+        player.client.send("----\nYou cannot play. Would you like to draw a card and test if it can be played? (y/n) : ".encode(FORMAT))
         draw_card = player.client.recv(HEADER).decode(FORMAT)
 
         if draw_card == 'y':
@@ -663,7 +675,7 @@ def drawNotPlayableHand(player, gameDeck, playable_cards, playable_index):
             
             player.client.send("\nYour hand is now: ".encode(FORMAT))
             for i in range(len(player.hand)):
-                player.client.send(str(i) + " : " + cardName(player.hand[i]).encode(FORMAT))
+                player.client.send((str(i) + " : " + cardName(player.hand[i])).encode(FORMAT))
 
             if player.hand[-1].val in playable_cards:
                 playable_index.append(player.hand.index(player.hand[-1]))
@@ -715,6 +727,7 @@ def middleGame(play_list, playable_index, playable_cards, player, playDeck):
 
         while True:
 
+            time.sleep(0.25)
             player.client.send("\nWhich card(s) would you like to play? (ONLY ONE INDEX) : ".encode(FORMAT))
             x = player.client.recv(HEADER).decode(FORMAT)
 
@@ -738,6 +751,8 @@ def endGame(play_list, playable_cards, player):
     global playDeck, playerList
 
     player.client.send("\nYou now have only you bottom cards left\n".encode(FORMAT))
+
+    time.sleep(0.25)
     player.client.send("----Press any key to continue...".encode(FORMAT))
     player.client.recv(HEADER).decode(FORMAT)
 
@@ -765,6 +780,7 @@ def endGame(play_list, playable_cards, player):
 def flipping(player):
     """tests if cards have been flipped and returns turn, clockwise, newRound, rule_card_val"""
     global playDeck, discardDeck, playerList, lose_order
+    global turn, clockwise, newRound, rule_card_val # these variables are changed if flipped conditions are true
 
     # flipping
     if len(playDeck) >= 4:
@@ -803,7 +819,8 @@ def flipping(player):
                 turn = nextTurn(turn, 0, clockwise, playerList)
                 lose_order.append(player)
                 playerList.remove(player)
-                all.client.send(f"!!!{player.name} LOST BY FLIPPING THE 8S!!!".encode(FORMAT))
+                for player in playerList:
+                    player.client.send(f"!!!{player.name} LOST BY FLIPPING THE 8S!!!".encode(FORMAT))
                 ####ASCIII ART#####
 
             elif val == 9:
@@ -812,8 +829,8 @@ def flipping(player):
                 discardDeck.clear()
                 playDeck.shuffle()
                 rule_card_val = playDeck[0].val
-                for all in playerList:
-                    all.client.send(f"9s flipped : Play on {cardName(playDeck[0])}".encode(FORMAT))
+                for player in playerList:
+                    player.client.send(f"9s flipped : Play on {cardName(playDeck[0])}".encode(FORMAT))
                 newRound = False
 
             else:
@@ -824,8 +841,6 @@ def flipping(player):
             for opp in oppList(player):
                 opp.client.send
                 opp.client.send(f"{player.name} FLIPPED the {readval(val)}s!!".encode(FORMAT))
-            
-            return turn, clockwise, newRound, rule_card_val
             
 def winlose(player):
     """checks if player has one or lost after finishing cards and returns gameOver"""
@@ -889,7 +904,7 @@ def main_gameloop():
 
     while gameOver == False:
 
-        player.turn = False
+        turn_player.turn = False
         for player in playerList:
             if player == playerList[turn]:
                 turn_player = player
@@ -898,6 +913,7 @@ def main_gameloop():
 
         infoDump()
         play_list.clear()
+        last_cards.clear()
 
         if newRound == True:
             newRound = False
@@ -957,16 +973,21 @@ def main_gameloop():
             elif not temp1 and player.bottomCards:
                 turn, newRound, play_list = endGame(play_list, playable_cards, player)
 
+
         """tests if cards have been flipped"""
-        turn, clockwise, newRound, rule_card_val = flipping(player)
+        flipping(player)
 
         if newRound == False:
             turn, clockwise, rule_card_val, attack, newRound = nextRules(turn, playDeck, discardDeck, play_list, clockwise, playerList, attack)
+            last_cards.extend(playDeck[-(len(play_list)):])
 
         # win lose condition
         if not player.hand and not player.bottomCards and player in playerList:
             """check for all win lose conditions except flipping 8s and returns none"""
             winlose(player)
+
+        for player in playerList:
+            waiting(1, player, playerList)
 
     standings = []
 

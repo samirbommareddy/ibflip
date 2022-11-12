@@ -51,10 +51,10 @@ def handle_client(clientsocket, addr):
 
     waiting(2, player, playerList)
 
-    start_string = "IBFlip Game Starting"
+    """start_string = "IBFlip Game Starting"
     for i in range(len("IBFlip Game Starting")):
         time.sleep(1)
-        clientsocket.send((" ."*i + start_string[i] + " ."*(len(start_string) - i)).encode(FORMAT))
+        clientsocket.send((" ."*i + start_string[i] + " ."*(len(start_string) - i)).encode(FORMAT))"""
 
     print("here now\n")
 
