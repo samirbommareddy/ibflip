@@ -1,43 +1,44 @@
 import socket 
 import threading
-from network import *
 
+HEADER = 64
+PORT = 8080
+SERVER = socket.gethostbyname(socket.gethostname())
+SERVER = "192.168.0.100"
+ADDR = (SERVER, PORT)
+FORMAT = 'utf-8'
+DISCONNECT_MESSAGE = "!DISCONNECT"
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.bind(ADDR)
 
-def handle_client(clientsocket, addr):
-
+def handle_client(conn, addr):
     print(f"[NEW CONNECTION] {addr} connected.")
-
-
-   
-    clientsocket.send("What is your name? : ".encode(FORMAT))
 
     connected = True
     while connected:
-        clientsocket.send("What is your name? : ".encode(FORMAT))
-        print(f"[{addr}]: {player.name} - [CONNECTED]")
+        msg_length = conn.recv(HEADER).decode(FORMAT)
+        if msg_length:
+            msg_length = int(msg_length)
+            msg = conn.recv(msg_length).decode(FORMAT)
+            if msg == DISCONNECT_MESSAGE:
+                connected = False
 
-    clientsocket.close()
+            print(f"[{addr}] {msg}")
+            conn.send("Msg received".encode(FORMAT))
+
+    conn.close()
         
 
-def network_start():
-    server.listen(num_players)
+def start():
+    server.listen()
     print(f"[LISTENING] Server is listening on {SERVER}")
     while True:
-        clientsocket, addr = server.accept()
-        print("connection accepted")
-        thread = threading.Thread(target=handle_client, args=(clientsocket, addr))
+        conn, addr = server.accept()
+        thread = threading.Thread(target=handle_client, args=(conn, addr))
         thread.start()
         print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 1}")
 
-def main():
-    print("[STARTING] server is starting...")
-    gameloop = threading.Thread(target=main_gameloop)
-    gameloop.start()
-    network_start()
 
-
-if __name__ == "__main__":
-    main()
+print("[STARTING] server is starting...")
+start()
