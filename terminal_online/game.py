@@ -623,7 +623,7 @@ def playHand(play_list, playable_index, player, playDeck):
         temp2 = []
         temp3 = []
 
-        time.sleep(0.25)
+        time.sleep(LOOP_SLEEP)
         player.client.send("----\nWhich card(s) would you like to play? (format = 'number, number' etc.) : ".encode(FORMAT))
         play_input = player.client.recv(HEADER).decode(FORMAT)
 
@@ -632,8 +632,9 @@ def playHand(play_list, playable_index, player, playDeck):
             else: temp1.append(True)
 
         if all(temp1):
-            #for x in play_input: 
-            play_list.append(int(x))
+            play_input = play_input.split(", ")
+            for x in play_input: 
+                play_list.append(int(x))
             for index in play_list:
                 if index not in playable_index: temp2.append(False)
                 else: temp2.append(True)
@@ -695,8 +696,9 @@ def drawNotPlayableHand(player, gameDeck, playable_cards, playable_index):
 
     return newRound, playable_index
 
-def eat(turn, clockwise, player, playDeck, newRound):
+def eat(player):
     """cannot play and there are no more cards"""
+    global turn, clockwise, playDeck, newRound
     turn = nextTurn(turn, 0, clockwise, playerList)
     player.hand.extend(playDeck)
     playDeck.clear()
@@ -706,7 +708,9 @@ def eat(turn, clockwise, player, playDeck, newRound):
 
     return turn, newRound
 
-def middleGame(play_list, playable_index, playable_cards, player, playDeck):
+def middleGame(player):
+
+    global play_list, playable_index, playable_cards, playDeck
 
     player.client.send("\nYour hand is empty. You have your face up cards left\n".encode(FORMAT))
 
@@ -717,7 +721,7 @@ def middleGame(play_list, playable_index, playable_cards, player, playDeck):
                 playable_index.append(i)
 
     if not playable_index:
-        turn, newRound = eat(turn, clockwise, turn_player, playDeck, newRound)
+        eat(turn_player)
 
     elif playable_index:
         """can play"""
@@ -746,9 +750,9 @@ def middleGame(play_list, playable_index, playable_cards, player, playDeck):
                 player.client.send("INVALID INPUT".encode(FORMAT))
     return turn, newRound, play_list
 
-def endGame(play_list, playable_cards, player):
+def endGame(player):
 
-    global playDeck, playerList
+    global playDeck, playerList, play_list, playable_cards
 
     player.client.send("\nYou now have only you bottom cards left\n".encode(FORMAT))
 
@@ -766,7 +770,7 @@ def endGame(play_list, playable_cards, player):
 
     if player.bottomCards[r].val not in playable_cards:
 
-        turn, newRound = eat(turn, player, playDeck, newRound)
+        eat(player)
 
     elif player.bottomCards[r].val in playable_cards:
 
@@ -904,7 +908,6 @@ def main_gameloop():
 
     while gameOver == False:
 
-        turn_player.turn = False
         for player in playerList:
             if player == playerList[turn]:
                 turn_player = player
@@ -917,6 +920,7 @@ def main_gameloop():
 
         if newRound == True:
             newRound = False
+            attack = False
             playable_cards = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
         elif newRound == False:
             playable_cards = playableCards(rule_card_val, attack)
@@ -929,7 +933,7 @@ def main_gameloop():
             for card in turn_player.hand:
                 if card.val in playable_cards:
                     playable_index.append(i)
-                    i += 1       
+                i += 1       
 
         # check status of what can and can't be played and play
 
@@ -946,7 +950,7 @@ def main_gameloop():
                 newRound = False 
 
             if newRound == True:
-                turn, newRound = eat(turn, clockwise, turn_player, playDeck, newRound)
+                eat(turn_player)
 
             elif newRound == False:
                 play_list = playHand(play_list, playable_index, turn_player, playDeck)
@@ -967,11 +971,11 @@ def main_gameloop():
 
             #middlegame / topcards
             if temp1:
-                turn, newRound, play_list = middleGame(play_list, playable_index, playable_cards, player, playDeck)
+                middleGame(turn_player)
             
             #endgame
             elif not temp1 and player.bottomCards:
-                turn, newRound, play_list = endGame(play_list, playable_cards, player)
+                endGame(turn_player)
 
 
         """tests if cards have been flipped"""
@@ -982,12 +986,14 @@ def main_gameloop():
             last_cards.extend(playDeck[-(len(play_list)):])
 
         # win lose condition
-        if not player.hand and not player.bottomCards and player in playerList:
+        if not turn_player.hand and not turn_player.bottomCards and turn_player in playerList:
             """check for all win lose conditions except flipping 8s and returns none"""
-            winlose(player)
+            winlose(turn_player)
 
-        for player in playerList:
-            waiting(1, player, playerList)
+        """for player in playerList:
+            waiting(1, player, playerList)"""
+
+        turn_player.turn = False
 
     standings = []
 

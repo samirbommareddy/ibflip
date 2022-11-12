@@ -18,7 +18,7 @@ def handle_client(clientsocket, addr):
     player_count += 1
 
     print("[WAITING] Waiting for other players to connect!")
-    while threading.activeCount() - 1 < num_players:
+    while threading.activeCount() - 2 < num_players:
         time.sleep(0.5)
         """WAIT UNTIL EVERYBODY HAS CONNECTED"""
 
@@ -81,7 +81,7 @@ def network_start():
         print("connection accepted")
         thread = threading.Thread(target=handle_client, args=(clientsocket, addr))
         thread.start()
-        print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 1}")
+        print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 2}")
 
 def main():
     print("[STARTING] server is starting...")
