@@ -5,7 +5,7 @@ import time
 from game import *
 from pickle_objects import clientGame, clientOpponent, clientPlayer
 
-SERVER = "enter_local_ip"
+SERVER = "192.168.1.69"
 PORT = 0000
   
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

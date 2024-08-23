@@ -19,8 +19,8 @@ COLOUR_INACTIVE = (150, 0, 0)
 
 FPS = 60
 
-SERVER = "enter_server_ip"
-PORT = 0000
+SERVER = "192.168.1.69"
+PORT = 8080
 ADDR = (SERVER, PORT)
 DATA_TIME = 0.1
 
