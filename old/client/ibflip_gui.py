@@ -1,5 +1,6 @@
 """file runs two threads indefinately to 1. communicate with server and 2. update pygame display"""
 import sys
+import os
 import time
 import threading
 import socket
@@ -38,16 +39,16 @@ angle = 0
 cur_page_index = 0
 
 
-left_arrow = pygame.image.load('assets/arrow-circle-right.png').convert_alpha()
+left_arrow = pygame.image.load(os.path.join('client', 'assets', 'arrow-circle-right.png')).convert_alpha()
 left_arrow = pygame.transform.scale(left_arrow, (card_height//3, card_height//3))
 left_arrow = pygame.transform.rotate(left_arrow, 180.0)
 left_arrow_rect = left_arrow.get_rect()
 
-right_arrow = pygame.image.load('assets/arrow-circle-right.png').convert_alpha()
+right_arrow = pygame.image.load(os.path.join('client', 'assets', 'arrow-circle-right.png')).convert_alpha()
 right_arrow = pygame.transform.scale(right_arrow, (card_height//3, card_height//3))
 right_arrow_rect = right_arrow.get_rect()
 
-circle_arrow = pygame.image.load('assets/circle_arrows.png').convert_alpha()
+circle_arrow = pygame.image.load(os.path.join('client', 'assets', 'circle_arrows.png')).convert_alpha()
 circle_arrow_anticl = pygame.transform.scale(circle_arrow, (2.25 * card_height, 2.25 * card_height))
 circle_arrow_cl = pygame.transform.flip(circle_arrow_anticl, True, False)
 
