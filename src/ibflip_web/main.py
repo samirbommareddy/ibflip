@@ -18,7 +18,7 @@ ACTIVE_GAMES: dict[str, IBFlipEngine] = {}
 BOT_RNG = random.Random()
 HUMAN_PLAYER = 0
 BOT_STEP_LIMIT = 500
-BOT_REPLAY_DELAY_MS = 650
+BOT_REPLAY_DELAY_MS = 1300
 
 app = FastAPI(title="IB-Flip API")
 app.add_middleware(
@@ -32,6 +32,10 @@ app.add_middleware(
 
 class PlayRequest(BaseModel):
     action_id: int
+
+
+class StartRequest(BaseModel):
+    num_players: int = 4
 
 
 def card_label(card_id: int) -> str:
@@ -168,6 +172,7 @@ def serialize_state(
     return {
         "session_id": session_id,
         "phase": engine.state.phase.name,
+        "num_players": len(engine.state.players),
         "game_over": engine.state.phase is Phase.GAME_OVER,
         "current_player": engine.state.current_player,
         "is_human_turn": engine.state.phase is not Phase.GAME_OVER and engine.state.current_player == HUMAN_PLAYER,
@@ -248,13 +253,17 @@ def health() -> dict[str, str]:
 
 
 @app.post("/start")
-def start_game() -> dict[str, Any]:
+def start_game(request: StartRequest | None = None) -> dict[str, Any]:
+    num_players = request.num_players if request else 4
+    if num_players < 2 or num_players > 5:
+        raise HTTPException(status_code=400, detail="num_players must be between 2 and 5")
+
     session_id = str(uuid4())
-    engine = IBFlipEngine(num_players=4)
+    engine = IBFlipEngine(num_players=num_players)
     engine.reset()
     engine.auto_fix_hands_randomly()
     ACTIVE_GAMES[session_id] = engine
-    log = ["Started a new 4-player game."]
+    log = [f"Started a new {num_players}-player game."]
     bot_log, moves = run_bots_until_human_turn(engine)
     log.extend(bot_log)
     return serialize_state(session_id, engine, log, moves)

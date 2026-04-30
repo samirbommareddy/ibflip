@@ -2,67 +2,97 @@
   color-scheme: light;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #123c32;
-  color: #172033;
+  background: #0d2b26;
+  color: #142033;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
 body {
+  width: 100%;
+  height: 100%;
   margin: 0;
-  min-height: 100vh;
+  overflow: hidden;
 }
 
-button {
+button,
+select {
   font: inherit;
 }
 
 .shell {
-  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
   background:
-    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.12), transparent 24rem),
-    linear-gradient(135deg, #185342 0%, #0f3029 58%, #10241f 100%);
+    radial-gradient(circle at 50% 16%, rgba(255, 255, 255, 0.13), transparent 22rem),
+    linear-gradient(135deg, #185342 0%, #0d3029 60%, #071d1a 100%);
   color: #f8fafc;
 }
 
 .topbar {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
-  padding: 16px clamp(14px, 3vw, 32px);
-  background: rgba(9, 24, 22, 0.92);
+  gap: 12px;
+  min-height: 68px;
+  padding: 12px clamp(14px, 2.5vw, 30px);
+  background: rgba(8, 24, 21, 0.94);
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .topbar h1 {
   margin: 0;
   font-size: 28px;
+  line-height: 1;
 }
 
 .topbar p {
-  margin: 4px 0 0;
+  margin: 5px 0 0;
   color: #bbf7d0;
+  font-size: 14px;
 }
 
+.top-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.top-controls label {
+  color: #d1fae5;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.top-controls select,
 .topbar button,
 .table-action {
   border: 0;
-  border-radius: 6px;
-  padding: 10px 14px;
+  border-radius: 7px;
+  padding: 9px 12px;
   background: #f8fafc;
   color: #10241f;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 800;
+}
+
+.top-controls select {
+  min-width: 58px;
 }
 
 .topbar button:disabled,
 .table-action:disabled,
-.playing-card:disabled {
+.playing-card:disabled,
+.top-controls select:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.55;
 }
 
 .turn-badge {
@@ -70,9 +100,10 @@ button {
   border-radius: 999px;
   padding: 8px 12px;
   color: #d1fae5;
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 900;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .turn-badge.active {
@@ -83,16 +114,34 @@ button {
 
 .table {
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 16px;
-  min-height: calc(100vh - 73px);
-  padding: 16px clamp(12px, 3vw, 32px) 28px;
+  grid-template-rows: minmax(106px, 0.65fr) minmax(222px, 1.15fr) minmax(210px, 1fr);
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px clamp(12px, 2.5vw, 30px) 14px;
 }
 
 .opponents {
   display: grid;
+  gap: 12px;
+  min-height: 0;
+}
+
+.opponents[data-count="1"] {
+  grid-template-columns: minmax(240px, 420px);
+  justify-content: center;
+}
+
+.opponents[data-count="2"] {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
+.opponents[data-count="3"] {
   grid-template-columns: repeat(3, minmax(190px, 1fr));
-  gap: 14px;
+}
+
+.opponents[data-count="4"] {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
 }
 
 .opponent,
@@ -100,64 +149,87 @@ button {
 .pile,
 .log,
 .move-strip {
+  min-height: 0;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
-  background: rgba(248, 250, 252, 0.94);
+  background: rgba(248, 250, 252, 0.95);
   color: #172033;
-  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+}
+
+.opponent,
+.human {
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.opponent.is-acting,
+.human.is-acting {
+  border-color: #facc15;
+  box-shadow:
+    0 0 0 3px rgba(250, 204, 21, 0.34),
+    0 14px 34px rgba(0, 0, 0, 0.24);
 }
 
 .opponent {
-  padding: 12px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 7px;
+  overflow: hidden;
+  padding: 10px;
 }
 
 .player-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 h2 {
   margin: 0;
   color: #334155;
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 1.1;
 }
 
 .player-head span,
 .hint {
   color: #64748b;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .opponent-counts {
   display: flex;
-  gap: 12px;
-  margin: 10px 0;
+  gap: 10px;
+  min-width: 0;
 }
 
 .stack {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 76px;
+  gap: 7px;
+  min-width: 0;
   color: #475569;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .tiny-stack {
   position: relative;
-  width: 34px;
-  height: 30px;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 24px;
 }
 
 .tiny-back,
 .tiny-empty {
   position: absolute;
   top: 0;
-  width: 22px;
-  height: 30px;
+  width: 18px;
+  height: 24px;
   border-radius: 4px;
   border: 1px solid #224338;
   background:
@@ -174,62 +246,99 @@ h2 {
 .mini-slots {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
+  min-height: 0;
 }
 
 .mini-slot,
 .human-slot {
+  min-height: 0;
   border: 1px dashed #cbd5e1;
   border-radius: 6px;
-  min-height: 64px;
-  padding: 6px;
   background: #f8fafc;
+}
+
+.mini-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 5px;
 }
 
 .center {
   display: grid;
-  grid-template-columns: minmax(160px, 220px) minmax(220px, 1fr) minmax(160px, 220px);
-  grid-template-rows: auto minmax(150px, 1fr);
-  gap: 14px;
-  align-items: stretch;
+  grid-template-columns: minmax(130px, 184px) minmax(280px, 1fr) minmax(130px, 184px);
+  grid-template-rows: minmax(0, 1fr) 86px;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .pile {
   display: grid;
-  gap: 8px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   justify-items: center;
-  padding: 14px;
+  gap: 7px;
+  overflow: hidden;
+  padding: 10px;
 }
 
 .pile p {
   margin: 0;
   color: #64748b;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .move-strip {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  min-height: 124px;
-  padding: 16px;
-  text-align: center;
-  font-size: 20px;
-  font-weight: 800;
+  gap: 16px;
+  overflow: hidden;
+  padding: 14px 18px;
+}
+
+.move-card {
+  display: grid;
+  place-items: center;
+  min-width: 86px;
+}
+
+.move-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.move-copy strong {
+  color: #0f766e;
+  font-size: clamp(16px, 2vw, 22px);
+  text-transform: uppercase;
+}
+
+.move-copy span {
+  color: #111827;
+  font-size: clamp(19px, 2.3vw, 30px);
+  font-weight: 900;
+  line-height: 1.08;
 }
 
 .log {
   grid-column: 1 / -1;
-  padding: 12px 14px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
+  padding: 10px 12px;
 }
 
 .log ol {
   display: grid;
-  gap: 6px;
-  max-height: 150px;
-  margin: 10px 0 0;
+  gap: 5px;
+  min-height: 0;
+  margin: 8px 0 0;
   padding: 0;
   overflow: auto;
   list-style: none;
@@ -239,9 +348,10 @@ h2 {
   border-left: 4px solid #94a3b8;
   border-radius: 5px;
   background: #f8fafc;
-  padding: 7px 9px;
+  padding: 6px 8px;
   color: #334155;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .log li.you {
@@ -258,16 +368,21 @@ h2 {
 
 .human {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 0.8fr 0.9fr;
-  gap: 14px;
+  grid-template-columns: minmax(250px, 1.35fr) minmax(240px, 1fr) minmax(150px, 0.65fr) minmax(170px, 0.75fr);
+  gap: 12px;
+  min-height: 0;
+  border-radius: 8px;
 }
 
 .zone {
-  padding: 12px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  padding: 10px 12px;
 }
 
 .zone h2 {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .cards,
@@ -275,25 +390,32 @@ h2 {
 .card-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 9px;
-  align-items: center;
-  min-height: 96px;
+  gap: 8px;
+  align-content: flex-start;
+  align-items: flex-start;
+  min-height: 0;
+  overflow: auto;
 }
 
 .slots {
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(64px, 1fr));
+  gap: 8px;
 }
 
 .human-slot {
-  min-width: 118px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  padding: 7px;
 }
 
 .slot-label {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
   color: #64748b;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 900;
   text-transform: uppercase;
 }
 
@@ -301,13 +423,14 @@ h2 {
   position: relative;
   display: grid;
   place-items: center;
-  width: 70px;
-  height: 98px;
+  flex: 0 0 auto;
+  width: 62px;
+  height: 86px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #ffffff;
   color: #111827;
-  box-shadow: 0 7px 16px rgba(15, 23, 42, 0.15);
+  box-shadow: 0 7px 15px rgba(15, 23, 42, 0.15);
   user-select: none;
 }
 
@@ -318,12 +441,16 @@ button.playing-card {
 .playing-card.legal {
   border: 2px solid #facc15;
   box-shadow:
-    0 0 0 3px rgba(250, 204, 21, 0.22),
+    0 0 0 3px rgba(250, 204, 21, 0.24),
     0 9px 20px rgba(15, 23, 42, 0.2);
 }
 
 .playing-card.legal:hover {
   transform: translateY(-3px);
+}
+
+body.replaying .playing-card.legal {
+  transform: none;
 }
 
 .playing-card.red {
@@ -339,20 +466,20 @@ button.playing-card {
 }
 
 .large-card {
-  width: 84px;
-  height: 118px;
+  width: min(84px, 100%);
+  height: 116px;
 }
 
 .mini-card {
-  width: 42px;
-  height: 58px;
+  width: 36px;
+  height: 50px;
   border-radius: 5px;
   box-shadow: none;
 }
 
 .compact-card {
-  width: 56px;
-  height: 78px;
+  width: 50px;
+  height: 70px;
 }
 
 .corner {
@@ -360,12 +487,12 @@ button.playing-card {
   display: grid;
   justify-items: center;
   line-height: 1;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 900;
 }
 
 .corner b {
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .corner.top {
@@ -380,25 +507,29 @@ button.playing-card {
 }
 
 .pip {
-  font-size: 34px;
+  font-size: 30px;
+}
+
+.large-card .pip {
+  font-size: 40px;
 }
 
 .mini-card .corner,
 .compact-card .corner {
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .mini-card .corner b,
 .compact-card .corner b {
-  font-size: 10px;
+  font-size: 9px;
 }
 
 .mini-card .pip {
-  font-size: 20px;
+  font-size: 17px;
 }
 
 .compact-card .pip {
-  font-size: 26px;
+  font-size: 22px;
 }
 
 .card-back {
@@ -412,13 +543,13 @@ button.playing-card {
 }
 
 .card-back span {
-  font-size: 34px;
+  font-size: 30px;
 }
 
 .card-back small {
   position: absolute;
-  bottom: 9px;
-  font-size: 11px;
+  bottom: 8px;
+  font-size: 10px;
   text-transform: uppercase;
 }
 
@@ -426,29 +557,28 @@ button.playing-card {
 .empty-pile {
   display: grid;
   place-items: center;
-  min-height: 52px;
+  min-height: 42px;
   border: 1px dashed #cbd5e1;
   border-radius: 6px;
   color: #94a3b8;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 900;
   text-transform: uppercase;
 }
 
 .empty-pile {
-  width: 84px;
-  height: 118px;
+  width: 80px;
+  height: 112px;
 }
 
 .empty-pile small {
   display: block;
-  font-size: 11px;
+  font-size: 10px;
   text-transform: none;
 }
 
 #specialActions {
   align-content: flex-start;
-  min-height: 96px;
 }
 
 .table-action {
@@ -457,20 +587,43 @@ button.playing-card {
 }
 
 @media (max-width: 1050px) {
+  .topbar {
+    grid-template-columns: 1fr;
+    min-height: 92px;
+  }
+
+  .table {
+    grid-template-rows: minmax(92px, 0.55fr) minmax(210px, 1.05fr) minmax(230px, 1.1fr);
+  }
+
+  .opponents[data-count] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .human {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
   .topbar {
-    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
-  .opponents,
+  .top-controls {
+    flex-wrap: wrap;
+  }
+
+  .opponents[data-count],
   .center,
   .human {
     grid-template-columns: 1fr;
+  }
+
+  .table {
+    grid-template-rows: minmax(88px, 0.7fr) minmax(210px, 1fr) minmax(230px, 1fr);
+    gap: 8px;
+    padding: 8px;
   }
 
   .log {

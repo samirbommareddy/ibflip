@@ -10,6 +10,7 @@ let isReplaying = false;
 
 const statusEl = document.getElementById("status");
 const startButton = document.getElementById("startButton");
+const playerCountEl = document.getElementById("playerCount");
 const handEl = document.getElementById("hand");
 const faceUpEl = document.getElementById("faceUp");
 const faceDownEl = document.getElementById("faceDown");
@@ -27,16 +28,22 @@ startButton.addEventListener("click", startGame);
 
 async function startGame() {
   startButton.disabled = true;
+  playerCountEl.disabled = true;
   clearLog();
   setMoveBanner("Shuffling and dealing...");
   try {
-    const state = await request("/start", { method: "POST" });
+    const state = await request("/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ num_players: Number(playerCountEl.value) }),
+    });
     sessionId = state.session_id;
     await renderState(state, { replay: true });
   } catch (error) {
     addLog(`Error: ${error.message}`, "bad");
     setMoveBanner("Could not start game");
   } finally {
+    playerCountEl.disabled = false;
     startButton.disabled = false;
   }
 }
@@ -44,7 +51,8 @@ async function startGame() {
 async function playAction(actionId) {
   if (!sessionId || !latestState?.is_human_turn || isReplaying) return;
   disableActions(true);
-  setMoveBanner("Resolving move...");
+  setMoveBanner("Resolving your move...");
+  highlightActor(0);
   try {
     const state = await request(`/play/${sessionId}`, {
       method: "POST",
@@ -72,13 +80,14 @@ async function request(path, options = {}) {
 
 async function renderState(state, options = {}) {
   latestState = state;
+  playerCountEl.value = String(state.num_players || playerCountEl.value);
   updateStatus(state);
   renderOpponents(state.opponents);
   renderPiles(state);
   renderHuman(state);
 
   if (options.replay && state.moves?.length) {
-    await replayMoves(state.moves, state.bot_replay_delay_ms || 650);
+    await replayMoves(state.moves, state.bot_replay_delay_ms || 1300);
   } else {
     renderLog(state.log);
   }
@@ -86,6 +95,7 @@ async function renderState(state, options = {}) {
   if (!state.moves?.length) {
     setMoveBanner(state.is_human_turn ? "Choose a highlighted card or action" : "Waiting for bots");
   }
+  highlightActor(state.game_over ? null : state.current_player);
 }
 
 function updateStatus(state) {
@@ -94,19 +104,24 @@ function updateStatus(state) {
     : state.is_human_turn
       ? "Your turn"
       : `Player ${state.current_player + 1} is acting`;
-  turnBadgeEl.textContent = state.game_over
-    ? "Game Over"
-    : state.is_human_turn
-      ? "Your Move"
-      : `Player ${state.current_player + 1}`;
-  turnBadgeEl.className = state.is_human_turn ? "turn-badge active" : "turn-badge";
+  setTurnBadge(
+    state.game_over ? "Game Over" : state.is_human_turn ? "Your Move" : `Player ${state.current_player + 1}`,
+    state.is_human_turn,
+  );
+}
+
+function setTurnBadge(text, active = false) {
+  turnBadgeEl.textContent = text;
+  turnBadgeEl.className = active ? "turn-badge active" : "turn-badge";
 }
 
 function renderOpponents(opponents) {
   opponentsEl.innerHTML = "";
+  opponentsEl.dataset.count = opponents.length;
   opponents.forEach((player) => {
     const panel = document.createElement("article");
     panel.className = `opponent seat-${player.player_index}`;
+    panel.dataset.playerIndex = String(player.player_index);
     panel.innerHTML = `
       <div class="player-head">
         <h2>Player ${player.player_index + 1}</h2>
@@ -126,10 +141,10 @@ function renderOpponents(opponents) {
 
 function renderPiles(state) {
   liveTopEl.innerHTML = state.live_pile_top ? cardHTML(state.live_pile_top, { large: true }) : emptyPile("Live");
-  liveMetaEl.textContent = `${state.live_pile.length} card${state.live_pile.length === 1 ? "" : "s"} on the live pile`;
+  liveMetaEl.textContent = `${state.live_pile.length} live`;
 
   discardTopEl.innerHTML = state.discard_top ? cardHTML(state.discard_top, { large: true, muted: true }) : emptyPile("Discard");
-  discardMetaEl.textContent = `${state.discard_count} discarded · ${state.draw_count} in draw pile`;
+  discardMetaEl.textContent = `${state.discard_count} discard · ${state.draw_count} draw`;
 }
 
 function renderHuman(state) {
@@ -143,7 +158,7 @@ function renderHuman(state) {
   state.human.face_up_slots.forEach((slot, index) => {
     const slotEl = document.createElement("div");
     slotEl.className = "human-slot";
-    slotEl.innerHTML = `<span class="slot-label">Face-up ${index + 1}</span>`;
+    slotEl.innerHTML = `<span class="slot-label">Up ${index + 1}</span>`;
     const row = document.createElement("div");
     row.className = "card-row compact";
     slot.forEach((card) => row.appendChild(cardButton(card, card.id, legal.has(card.id), { compact: true })));
@@ -215,7 +230,7 @@ function cardFace(card) {
 
 function backStack(count, label) {
   const cards = Array.from({ length: Math.min(count, 3) })
-    .map((_, index) => `<span class="tiny-back" style="left:${index * 7}px"></span>`)
+    .map((_, index) => `<span class="tiny-back" style="left:${index * 6}px"></span>`)
     .join("");
   return `<div class="stack"><div class="tiny-stack">${cards || '<span class="tiny-empty"></span>'}</div><span>${label}: ${count}</span></div>`;
 }
@@ -230,21 +245,41 @@ function emptyPile(label) {
 
 async function replayMoves(moves, delayMs) {
   isReplaying = true;
+  document.body.classList.add("replaying");
   disableActions(true);
   for (const move of moves) {
+    highlightActor(move.player_index);
+    setTurnBadge(move.player_index === 0 ? "Your Move" : `Player ${move.player_index + 1}`, move.player_index === 0);
+    statusEl.textContent = move.player_index === 0 ? "Your move is resolving" : `Player ${move.player_index + 1} is acting`;
     setMoveBanner(move.message, move);
     addLog(move.message, move.player_index === 0 ? "you" : "bot");
     await sleep(delayMs);
   }
   isReplaying = false;
+  document.body.classList.remove("replaying");
   disableActions(false);
+  updateStatus(latestState);
+  highlightActor(latestState?.game_over ? null : latestState?.current_player);
   setMoveBanner(latestState?.game_over ? gameOverText(latestState) : "Your turn: choose a highlighted move");
 }
 
 function setMoveBanner(message, move = null) {
   if (!moveBannerEl) return;
-  const card = move?.card ? cardHTML(move.card, { mini: true }) : "";
-  moveBannerEl.innerHTML = `${card}<span>${message}</span>`;
+  const playerName = move ? (move.player_index === 0 ? "You" : `Player ${move.player_index + 1}`) : "";
+  const card = move?.card ? cardHTML(move.card, { large: true }) : "";
+  moveBannerEl.innerHTML = `
+    <div class="move-card">${card}</div>
+    <div class="move-copy">
+      <strong>${playerName || "Table"}</strong>
+      <span>${message}</span>
+    </div>
+  `;
+}
+
+function highlightActor(playerIndex) {
+  document.querySelectorAll("[data-player-index]").forEach((element) => {
+    element.classList.toggle("is-acting", Number(element.dataset.playerIndex) === Number(playerIndex));
+  });
 }
 
 function renderLog(entries) {

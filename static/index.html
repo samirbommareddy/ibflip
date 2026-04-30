@@ -13,8 +13,17 @@
           <h1>IB-Flip</h1>
           <p id="status">No game started</p>
         </div>
-        <span id="turnBadge" class="turn-badge">Not Started</span>
-        <button id="startButton" type="button">New Game</button>
+        <div class="top-controls">
+          <label for="playerCount">Players</label>
+          <select id="playerCount" aria-label="Total players">
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4" selected>4</option>
+            <option value="5">5</option>
+          </select>
+          <span id="turnBadge" class="turn-badge">Not Started</span>
+          <button id="startButton" type="button">New Game</button>
+        </div>
       </header>
 
       <section class="table">
@@ -38,7 +47,7 @@
           </div>
         </section>
 
-        <section class="human">
+        <section class="human" data-player-index="0">
           <div class="zone">
             <h2>Human Hand</h2>
             <div id="hand" class="cards"></div>
