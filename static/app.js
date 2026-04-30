@@ -146,6 +146,7 @@ function renderOpponents(opponents) {
 function renderPiles(state) {
   renderPileSnapshot({
     liveTop: state.live_pile_top,
+    liveCards: state.live_pile,
     liveCount: state.live_pile.length,
     discardTop: state.discard_top,
     discardCount: state.discard_count,
@@ -154,7 +155,9 @@ function renderPiles(state) {
 }
 
 function renderPileSnapshot(snapshot) {
-  liveTopEl.innerHTML = snapshot.liveTop ? cardHTML(snapshot.liveTop, { large: true }) : emptyPile("Live");
+  const liveCards = snapshot.liveCards || (snapshot.liveTop ? [snapshot.liveTop] : []);
+  liveTopEl.className = liveCards.length ? "pile-stack live-stack" : "pile-stack empty-stack";
+  liveTopEl.innerHTML = liveCards.length ? liveStackHTML(liveCards) : emptyPile("Live");
   liveMetaEl.textContent = `${snapshot.liveCount} live`;
   liveCountBadgeEl.textContent = snapshot.liveCount;
 
@@ -165,9 +168,16 @@ function renderPileSnapshot(snapshot) {
 
 function renderHuman(state) {
   const legal = new Set(state.legal_actions);
+  updateHandLayout(state.human.hand.length);
   handEl.innerHTML = "";
-  state.human.hand.forEach((card) => {
-    handEl.appendChild(cardButton(card, card.id, legal.has(card.id), { showPlayable: true }));
+  state.human.hand.forEach((card, index) => {
+    handEl.appendChild(
+      cardButton(card, card.id, legal.has(card.id), {
+        showPlayable: true,
+        handIndex: index,
+        handCount: state.human.hand.length,
+      }),
+    );
   });
 
   faceUpEl.innerHTML = "";
@@ -219,6 +229,12 @@ function cardButton(card, actionId, legal, options = {}) {
   button.disabled = !legal || !latestState?.is_human_turn || isReplaying;
   button.innerHTML = `${cardFace(card)}${legal && options.showPlayable ? '<span class="playable-tag">Play</span>' : ""}`;
   button.setAttribute("aria-label", card.label);
+  if (Number.isInteger(options.handIndex) && Number.isInteger(options.handCount)) {
+    const midpoint = (options.handCount - 1) / 2;
+    const distance = options.handIndex - midpoint;
+    button.style.setProperty("--hand-tilt", `${clamp(distance * 3, -9, 9)}deg`);
+    button.style.setProperty("--hand-lift", `${Math.abs(distance) < 0.5 ? -8 : Math.abs(distance) < 1.5 ? -4 : 0}px`);
+  }
   if (legal) button.addEventListener("click", () => playAction(actionId));
   return button;
 }
@@ -242,6 +258,33 @@ function cardFace(card) {
     <span class="pip">${card.symbol}</span>
     <span class="corner bottom">${card.rank}<b>${card.symbol}</b></span>
   `;
+}
+
+function liveStackHTML(cards) {
+  const visibleCards = cards.slice(-4);
+  const hiddenCount = Math.max(0, cards.length - visibleCards.length);
+  return `
+    <div class="stacked-live-cards" style="--stack-size:${visibleCards.length}">
+      ${visibleCards
+        .map(
+          (card, index) =>
+            `<div class="stack-card" style="--stack-index:${index}; --stack-reverse:${visibleCards.length - index - 1}">${cardHTML(card, { large: true })}</div>`,
+        )
+        .join("")}
+    </div>
+    ${hiddenCount ? `<span class="under-count">+${hiddenCount} under</span>` : ""}
+  `;
+}
+
+function updateHandLayout(count) {
+  handEl.dataset.count = String(count);
+  handEl.classList.toggle("many-cards", count > 6);
+  const railWidth = Math.max(260, handEl.clientWidth || 420);
+  const cardWidth = count <= 3 ? 92 : count <= 6 ? 84 : count <= 10 ? 76 : 68;
+  const requiredOverlap = count <= 1 ? 0 : (count * cardWidth - railWidth + 42) / (count - 1);
+  const overlap = count <= 3 ? 14 : clamp(requiredOverlap, 10, cardWidth - 28);
+  handEl.style.setProperty("--hand-card-width", `${cardWidth}px`);
+  handEl.style.setProperty("--hand-overlap", `${Math.max(0, overlap)}px`);
 }
 
 function backStack(count, label) {
@@ -302,6 +345,7 @@ function setMoveBanner(message, move = null, replay = null) {
 function renderReplayPileSnapshot(move) {
   renderPileSnapshot({
     liveTop: move.live_pile_top,
+    liveCards: move.live_pile_top ? [move.live_pile_top] : [],
     liveCount: move.live_pile_count,
     discardTop: latestState?.discard_top,
     discardCount: move.discard_count,
@@ -394,6 +438,10 @@ function gameOverText(state) {
 
 function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 setMoveBanner("Start a new game");

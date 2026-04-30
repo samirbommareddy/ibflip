@@ -1,5 +1,8 @@
 :root {
   color-scheme: light;
+  --board-gap: 10px;
+  --panel-radius: 10px;
+  --side-pile-width: clamp(132px, 13vw, 176px);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #10233f;
@@ -39,11 +42,11 @@ select {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(220px, 1fr) minmax(360px, auto);
   align-items: center;
-  gap: 12px;
-  min-height: 68px;
-  padding: 12px clamp(14px, 2.5vw, 30px);
+  gap: 16px;
+  min-height: 64px;
+  padding: 10px clamp(18px, 2.4vw, 32px);
   background: rgba(7, 18, 38, 0.94);
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
@@ -63,7 +66,9 @@ select {
 .top-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 9px;
+  min-width: 0;
 }
 
 .top-controls label {
@@ -86,7 +91,7 @@ select {
 }
 
 .top-controls select {
-  min-width: 58px;
+  width: 58px;
 }
 
 .topbar button:disabled,
@@ -106,6 +111,8 @@ select {
   font-weight: 900;
   text-transform: uppercase;
   white-space: nowrap;
+  min-width: 92px;
+  text-align: center;
 }
 
 .turn-badge.active {
@@ -116,16 +123,16 @@ select {
 
 .table {
   display: grid;
-  grid-template-rows: minmax(106px, 0.65fr) minmax(222px, 1.15fr) minmax(210px, 1fr);
-  gap: 12px;
+  grid-template-rows: minmax(112px, 0.66fr) minmax(218px, 1.05fr) minmax(220px, 1.06fr);
+  gap: var(--board-gap);
   min-height: 0;
   overflow: hidden;
-  padding: 12px clamp(12px, 2.5vw, 30px) 14px;
+  padding: 10px clamp(14px, 2.2vw, 30px) 12px;
 }
 
 .opponents {
   display: grid;
-  gap: 12px;
+  gap: var(--board-gap);
   min-height: 0;
 }
 
@@ -143,7 +150,7 @@ select {
 }
 
 .opponents[data-count="4"] {
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .opponent,
@@ -153,7 +160,7 @@ select {
 .move-strip {
   min-height: 0;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 8px;
+  border-radius: var(--panel-radius);
   background: rgba(248, 250, 252, 0.96);
   color: #172033;
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
@@ -180,9 +187,9 @@ select {
   position: relative;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 7px;
+  gap: 6px;
   overflow: hidden;
-  padding: 10px;
+  padding: 9px 10px;
   border-top-width: 5px;
 }
 
@@ -246,6 +253,7 @@ h2 {
 
 .opponent-counts {
   display: flex;
+  flex-wrap: nowrap;
   gap: 10px;
   min-width: 0;
 }
@@ -289,7 +297,7 @@ h2 {
 .mini-slots {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
   min-height: 0;
 }
 
@@ -306,14 +314,14 @@ h2 {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: 5px;
+  padding: 4px;
 }
 
 .center {
   display: grid;
-  grid-template-columns: minmax(130px, 184px) minmax(280px, 1fr) minmax(130px, 184px);
-  grid-template-rows: minmax(0, 1fr) 86px;
-  gap: 12px;
+  grid-template-columns: var(--side-pile-width) minmax(360px, 1fr) var(--side-pile-width);
+  grid-template-rows: minmax(0, 1fr) 78px;
+  gap: var(--board-gap);
   min-height: 0;
   overflow: hidden;
 }
@@ -325,7 +333,7 @@ h2 {
   justify-items: center;
   gap: 4px;
   overflow: hidden;
-  padding: 10px;
+  padding: 9px 10px 8px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(226, 232, 240, 0.96));
 }
 
@@ -359,14 +367,76 @@ h2 {
   font-weight: 700;
 }
 
+.pile-stack {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 0;
+  isolation: isolate;
+}
+
+.stacked-live-cards {
+  position: relative;
+  width: 108px;
+  height: 126px;
+}
+
+.stack-card {
+  position: absolute;
+  top: calc(var(--stack-index) * 6px);
+  left: calc(var(--stack-index) * 7px);
+  z-index: calc(var(--stack-index) + 1);
+  transform: rotate(calc((var(--stack-index) - 1.5) * 2.2deg));
+  transform-origin: 50% 100%;
+}
+
+.stack-card .large-card {
+  width: 74px;
+}
+
+.stack-card:not(:last-child) .playing-card {
+  filter: saturate(0.78) brightness(0.96);
+  opacity: 0.9;
+}
+
+.live-stack::after {
+  position: absolute;
+  top: 52%;
+  left: 12px;
+  width: 48px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.1);
+  content: "";
+  transform: rotate(-7deg);
+  z-index: 0;
+}
+
+.under-count {
+  position: absolute;
+  right: 8px;
+  bottom: 5px;
+  z-index: 8;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #facc15;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  box-shadow: 0 7px 14px rgba(15, 23, 42, 0.22);
+}
+
 .move-strip {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: 96px minmax(0, 1fr);
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 18px;
   overflow: hidden;
-  padding: 14px 18px;
+  padding: 12px clamp(18px, 2.5vw, 28px);
   border-color: rgba(250, 204, 21, 0.78);
   background:
     linear-gradient(135deg, rgba(255, 251, 235, 0.98), rgba(224, 242, 254, 0.98)),
@@ -380,7 +450,8 @@ body.replaying .move-strip {
 .move-card {
   display: grid;
   place-items: center;
-  min-width: 86px;
+  min-width: 0;
+  width: 96px;
 }
 
 body.replaying .move-card .playing-card {
@@ -390,6 +461,7 @@ body.replaying .move-card .playing-card {
 .move-copy {
   display: grid;
   gap: 6px;
+  align-content: center;
   min-width: 0;
 }
 
@@ -402,7 +474,7 @@ body.replaying .move-card .playing-card {
 .move-progress {
   position: relative;
   overflow: hidden;
-  width: min(280px, 100%);
+  width: min(320px, 100%);
   height: 18px;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.12);
@@ -445,14 +517,14 @@ body.replaying .move-card .playing-card {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 
 .log ol {
   display: grid;
   gap: 5px;
   min-height: 0;
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   padding: 0;
   overflow: auto;
   list-style: none;
@@ -465,7 +537,7 @@ body.replaying .move-card .playing-card {
   border-left: 4px solid #94a3b8;
   border-radius: 5px;
   background: #f8fafc;
-  padding: 6px 8px;
+  padding: 5px 8px;
   color: #334155;
   font-size: 13px;
   line-height: 1.2;
@@ -512,10 +584,10 @@ body.replaying .move-card .playing-card {
 
 .human {
   display: grid;
-  grid-template-columns: minmax(250px, 1.35fr) minmax(240px, 1fr) minmax(150px, 0.65fr) minmax(170px, 0.75fr);
-  gap: 12px;
+  grid-template-columns: minmax(290px, 1.55fr) minmax(240px, 1fr) minmax(160px, 0.72fr) minmax(168px, 0.7fr);
+  gap: var(--board-gap);
   min-height: 0;
-  border-radius: 8px;
+  border-radius: var(--panel-radius);
   border-top: 5px solid #facc15;
 }
 
@@ -523,7 +595,7 @@ body.replaying .move-card .playing-card {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
-  padding: 10px 12px;
+  padding: 10px 12px 12px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(239, 246, 255, 0.96));
 }
 
@@ -544,11 +616,27 @@ body.replaying .move-card .playing-card {
 }
 
 #hand.cards {
+  --hand-card-width: clamp(72px, 6.2vw, 92px);
+  --hand-overlap: 14px;
   align-content: end;
   align-items: end;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 18px clamp(18px, 3vw, 34px) 16px;
+  scroll-padding-inline: 24px;
+  scrollbar-color: rgba(15, 23, 42, 0.28) transparent;
+  scrollbar-width: thin;
+}
+
+#hand.cards[data-count="0"],
+#hand.cards[data-count="1"],
+#hand.cards[data-count="2"],
+#hand.cards[data-count="3"],
+#hand.cards[data-count="4"],
+#hand.cards[data-count="5"] {
   justify-content: center;
-  overflow: visible;
-  padding: 4px 12px 14px;
 }
 
 #faceDown.cards,
@@ -556,36 +644,39 @@ body.replaying .move-card .playing-card {
   overflow: hidden;
 }
 
+#faceDown.cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(54px, 64px));
+  grid-auto-rows: min-content;
+  justify-content: center;
+  align-content: center;
+  gap: 10px;
+}
+
+#faceDown.cards .playing-card:nth-child(3) {
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
 #hand .playing-card {
-  width: clamp(72px, 6.2vw, 92px);
-  margin-left: -14px;
+  width: var(--hand-card-width);
+  margin-left: calc(-1 * var(--hand-overlap));
   transform-origin: 50% 110%;
+  transform: rotate(var(--hand-tilt, 0deg)) translateY(var(--hand-lift, 0));
+}
+
+#hand.many-cards .playing-card {
+  border-radius: 7px;
 }
 
 #hand .playing-card:first-child {
   margin-left: 0;
 }
 
-#hand .playing-card:nth-child(1) {
-  transform: rotate(-5deg);
-}
-
-#hand .playing-card:nth-child(2) {
-  transform: rotate(-1deg) translateY(-3px);
-}
-
-#hand .playing-card:nth-child(3) {
-  transform: rotate(4deg);
-}
-
-#hand .playing-card:nth-child(4) {
-  transform: rotate(7deg);
-}
-
 .slots {
   display: grid;
-  grid-template-columns: repeat(3, minmax(64px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(70px, 1fr));
+  gap: 9px;
 }
 
 .human-slot {
@@ -593,6 +684,12 @@ body.replaying .move-card .playing-card {
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   padding: 7px;
+}
+
+.human-slot .card-row {
+  justify-content: center;
+  align-content: center;
+  overflow: hidden;
 }
 
 .slot-label {
@@ -688,7 +785,7 @@ body.replaying .playing-card.legal {
 }
 
 .large-card {
-  width: min(84px, 100%);
+  width: min(80px, 100%);
   box-shadow:
     0 14px 28px rgba(15, 23, 42, 0.22),
     0 2px 0 rgba(15, 23, 42, 0.08);
@@ -699,13 +796,13 @@ body.replaying .playing-card.legal {
 }
 
 .mini-card {
-  width: 36px;
+  width: 34px;
   border-radius: 5px;
   box-shadow: none;
 }
 
 .compact-card {
-  width: 50px;
+  width: 48px;
 }
 
 .corner {
