@@ -18,8 +18,10 @@ const specialActionsEl = document.getElementById("specialActions");
 const opponentsEl = document.getElementById("opponents");
 const liveTopEl = document.getElementById("liveTop");
 const liveMetaEl = document.getElementById("liveMeta");
+const liveCountBadgeEl = document.getElementById("liveCountBadge");
 const discardTopEl = document.getElementById("discardTop");
 const discardMetaEl = document.getElementById("discardMeta");
+const discardCountBadgeEl = document.getElementById("discardCountBadge");
 const gameLogEl = document.getElementById("gameLog");
 const moveBannerEl = document.getElementById("moveBanner");
 const turnBadgeEl = document.getElementById("turnBadge");
@@ -80,6 +82,7 @@ async function request(path, options = {}) {
 
 async function renderState(state, options = {}) {
   latestState = state;
+  document.body.classList.toggle("has-game", Boolean(state.session_id));
   playerCountEl.value = String(state.num_players || playerCountEl.value);
   updateStatus(state);
   renderOpponents(state.opponents);
@@ -125,8 +128,9 @@ function renderOpponents(opponents) {
     panel.innerHTML = `
       <div class="player-head">
         <h2>Player ${player.player_index + 1}</h2>
-        <span>${player.active ? "In" : player.finish_status || "Out"}</span>
+        <span class="seat-status">${player.active ? "In" : player.finish_status || "Out"}</span>
       </div>
+      <div class="turn-marker">Acting</div>
       <div class="opponent-counts">
         <div>${backStack(player.hand_count, "Hand")}</div>
         <div>${backStack(player.face_down_count, "Down")}</div>
@@ -140,18 +144,30 @@ function renderOpponents(opponents) {
 }
 
 function renderPiles(state) {
-  liveTopEl.innerHTML = state.live_pile_top ? cardHTML(state.live_pile_top, { large: true }) : emptyPile("Live");
-  liveMetaEl.textContent = `${state.live_pile.length} live`;
+  renderPileSnapshot({
+    liveTop: state.live_pile_top,
+    liveCount: state.live_pile.length,
+    discardTop: state.discard_top,
+    discardCount: state.discard_count,
+    drawCount: state.draw_count,
+  });
+}
 
-  discardTopEl.innerHTML = state.discard_top ? cardHTML(state.discard_top, { large: true, muted: true }) : emptyPile("Discard");
-  discardMetaEl.textContent = `${state.discard_count} discard · ${state.draw_count} draw`;
+function renderPileSnapshot(snapshot) {
+  liveTopEl.innerHTML = snapshot.liveTop ? cardHTML(snapshot.liveTop, { large: true }) : emptyPile("Live");
+  liveMetaEl.textContent = `${snapshot.liveCount} live`;
+  liveCountBadgeEl.textContent = snapshot.liveCount;
+
+  discardTopEl.innerHTML = snapshot.discardTop ? cardHTML(snapshot.discardTop, { large: true, muted: true }) : emptyPile("Discard");
+  discardMetaEl.textContent = `${snapshot.discardCount} discard · ${snapshot.drawCount} draw`;
+  discardCountBadgeEl.textContent = snapshot.discardCount;
 }
 
 function renderHuman(state) {
   const legal = new Set(state.legal_actions);
   handEl.innerHTML = "";
   state.human.hand.forEach((card) => {
-    handEl.appendChild(cardButton(card, card.id, legal.has(card.id)));
+    handEl.appendChild(cardButton(card, card.id, legal.has(card.id), { showPlayable: true }));
   });
 
   faceUpEl.innerHTML = "";
@@ -184,9 +200,9 @@ function renderHuman(state) {
     .filter((actionId) => actionId >= 52 && actionId < 67)
     .forEach((actionId) => {
       const button = document.createElement("button");
-      button.className = "table-action legal";
+      button.className = `table-action legal ${actionClass(actionId)}`;
       button.type = "button";
-      button.textContent = specialActionLabel(actionId);
+      button.innerHTML = `<span class="action-icon">${specialActionIcon(actionId)}</span><span>${specialActionLabel(actionId)}</span>`;
       button.disabled = !state.is_human_turn || isReplaying;
       button.addEventListener("click", () => playAction(actionId));
       specialActionsEl.appendChild(button);
@@ -201,7 +217,7 @@ function cardButton(card, actionId, legal, options = {}) {
   button.className = `playing-card ${card.color || ""}${legal ? " legal" : ""}${options.compact ? " compact-card" : ""}`;
   button.type = "button";
   button.disabled = !legal || !latestState?.is_human_turn || isReplaying;
-  button.innerHTML = cardFace(card);
+  button.innerHTML = `${cardFace(card)}${legal && options.showPlayable ? '<span class="playable-tag">Play</span>' : ""}`;
   button.setAttribute("aria-label", card.label);
   if (legal) button.addEventListener("click", () => playAction(actionId));
   return button;
@@ -247,11 +263,13 @@ async function replayMoves(moves, delayMs) {
   isReplaying = true;
   document.body.classList.add("replaying");
   disableActions(true);
-  for (const move of moves) {
+  for (const [index, move] of moves.entries()) {
     highlightActor(move.player_index);
     setTurnBadge(move.player_index === 0 ? "Your Move" : `Player ${move.player_index + 1}`, move.player_index === 0);
     statusEl.textContent = move.player_index === 0 ? "Your move is resolving" : `Player ${move.player_index + 1} is acting`;
-    setMoveBanner(move.message, move);
+    setMoveBanner(move.message, move, { step: index + 1, total: moves.length });
+    renderReplayPileSnapshot(move);
+    pulsePiles(move);
     addLog(move.message, move.player_index === 0 ? "you" : "bot");
     await sleep(delayMs);
   }
@@ -259,21 +277,47 @@ async function replayMoves(moves, delayMs) {
   document.body.classList.remove("replaying");
   disableActions(false);
   updateStatus(latestState);
+  renderPiles(latestState);
   highlightActor(latestState?.game_over ? null : latestState?.current_player);
   setMoveBanner(latestState?.game_over ? gameOverText(latestState) : "Your turn: choose a highlighted move");
 }
 
-function setMoveBanner(message, move = null) {
+function setMoveBanner(message, move = null, replay = null) {
   if (!moveBannerEl) return;
   const playerName = move ? (move.player_index === 0 ? "You" : `Player ${move.player_index + 1}`) : "";
   const card = move?.card ? cardHTML(move.card, { large: true }) : "";
+  const progress = replay ? `<div class="move-progress"><span>Move ${replay.step} of ${replay.total}</span><b style="width:${(replay.step / replay.total) * 100}%"></b></div>` : "";
+  const detail = move ? `<small>${move.live_pile_count} live · ${move.discard_count} discard · ${move.draw_count} draw</small>` : "";
   moveBannerEl.innerHTML = `
     <div class="move-card">${card}</div>
     <div class="move-copy">
       <strong>${playerName || "Table"}</strong>
       <span>${message}</span>
+      ${detail}
+      ${progress}
     </div>
   `;
+}
+
+function renderReplayPileSnapshot(move) {
+  renderPileSnapshot({
+    liveTop: move.live_pile_top,
+    liveCount: move.live_pile_count,
+    discardTop: latestState?.discard_top,
+    discardCount: move.discard_count,
+    drawCount: move.draw_count,
+  });
+}
+
+function pulsePiles(move) {
+  pulseElement(liveTopEl);
+  if (move.action_id === 52 || move.discard_count > 0) pulseElement(discardTopEl);
+}
+
+function pulseElement(element) {
+  element.classList.remove("pile-pop");
+  void element.offsetWidth;
+  element.classList.add("pile-pop");
 }
 
 function highlightActor(playerIndex) {
@@ -294,7 +338,8 @@ function clearLog() {
 function addLog(message, kind = "") {
   const item = document.createElement("li");
   if (kind) item.className = kind;
-  item.textContent = message;
+  const icon = kind === "you" ? "YOU" : kind === "bot" ? "BOT" : kind === "bad" ? "!" : "SYS";
+  item.innerHTML = `<span class="log-chip">${icon}</span><span>${message}</span>`;
   gameLogEl.prepend(item);
 }
 
@@ -323,6 +368,20 @@ function specialActionLabel(actionId) {
     66: "Keep undersized hand",
   };
   return labels[actionId] || `Action ${actionId}`;
+}
+
+function specialActionIcon(actionId) {
+  if (actionId === 52) return "⬆";
+  if (actionId === 53) return "9";
+  if (actionId === 54) return "↻";
+  if (actionId === 55) return "✓";
+  return "•";
+}
+
+function actionClass(actionId) {
+  if (actionId === 52) return "danger-action";
+  if (actionId === 55) return "commit-action";
+  return "utility-action";
 }
 
 function gameOverText(state) {

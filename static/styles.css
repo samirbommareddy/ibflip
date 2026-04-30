@@ -177,12 +177,35 @@ select {
 }
 
 .opponent {
+  position: relative;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 7px;
   overflow: hidden;
   padding: 10px;
   border-top-width: 5px;
+}
+
+.turn-marker {
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  display: none;
+  border-radius: 999px;
+  background: #facc15;
+  color: #111827;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.is-acting .turn-marker {
+  display: block;
+}
+
+.is-acting .seat-status {
+  opacity: 0;
 }
 
 .seat-1 {
@@ -296,6 +319,7 @@ h2 {
 }
 
 .pile {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   justify-items: center;
@@ -303,6 +327,22 @@ h2 {
   overflow: hidden;
   padding: 10px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(226, 232, 240, 0.96));
+}
+
+.pile-badge {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #facc15;
+  font-size: 12px;
+  font-weight: 900;
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.22);
 }
 
 .pile h2 {
@@ -353,6 +393,40 @@ body.replaying .move-card .playing-card {
   min-width: 0;
 }
 
+.move-copy small {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.move-progress {
+  position: relative;
+  overflow: hidden;
+  width: min(280px, 100%);
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.12);
+}
+
+.move-copy .move-progress span {
+  position: relative;
+  z-index: 1;
+  display: block;
+  padding-left: 9px;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 18px;
+  text-transform: uppercase;
+}
+
+.move-progress b {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #facc15, #22c55e);
+}
+
 .move-copy strong {
   color: #0f766e;
   font-size: clamp(16px, 2vw, 22px);
@@ -385,6 +459,9 @@ body.replaying .move-card .playing-card {
 }
 
 .log li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   border-left: 4px solid #94a3b8;
   border-radius: 5px;
   background: #f8fafc;
@@ -392,6 +469,33 @@ body.replaying .move-card .playing-card {
   color: #334155;
   font-size: 13px;
   line-height: 1.2;
+}
+
+.log-chip {
+  flex: 0 0 auto;
+  min-width: 34px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  padding: 2px 6px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.log li.you .log-chip {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.log li.bot .log-chip {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.log li.bad .log-chip {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 .log li.you {
@@ -513,6 +617,11 @@ body.replaying .move-card .playing-card {
   color: #111827;
   box-shadow: 0 7px 15px rgba(15, 23, 42, 0.15);
   user-select: none;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease,
+    opacity 160ms ease;
 }
 
 button.playing-card {
@@ -524,6 +633,33 @@ button.playing-card {
   box-shadow:
     0 0 0 3px rgba(250, 204, 21, 0.28),
     0 10px 24px rgba(37, 99, 235, 0.28);
+}
+
+.playing-card:disabled:not(.legal) {
+  filter: saturate(0.6);
+  opacity: 0.72;
+}
+
+#hand .playing-card:disabled:not(.legal) {
+  opacity: 0.58;
+}
+
+.playable-tag {
+  position: absolute;
+  right: 7px;
+  top: -10px;
+  border-radius: 999px;
+  background: #facc15;
+  color: #111827;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  box-shadow: 0 5px 10px rgba(15, 23, 42, 0.18);
+}
+
+body.replaying .playable-tag {
+  opacity: 0;
 }
 
 .playing-card.legal:hover {
@@ -674,9 +810,46 @@ body.replaying .playing-card.legal {
 }
 
 .table-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   background: linear-gradient(135deg, #0ea5e9, #0f766e);
   color: #ecfeff;
   box-shadow: 0 8px 18px rgba(15, 118, 110, 0.24);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.table-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 22px rgba(15, 118, 110, 0.3);
+}
+
+.action-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  font-weight: 900;
+}
+
+.danger-action {
+  background: linear-gradient(135deg, #f97316, #dc2626);
+}
+
+.commit-action {
+  background: linear-gradient(135deg, #22c55e, #0f766e);
+}
+
+.utility-action {
+  background: linear-gradient(135deg, #0ea5e9, #2563eb);
+}
+
+.pile-pop {
+  animation: pilePop 420ms ease-out;
 }
 
 @keyframes seatPulse {
@@ -707,6 +880,17 @@ body.replaying .playing-card.legal {
   to {
     transform: translateY(0) scale(1) rotate(0);
     opacity: 1;
+  }
+}
+
+@keyframes pilePop {
+  from {
+    transform: translateY(8px) scale(0.94);
+    filter: brightness(1.12);
+  }
+  to {
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
   }
 }
 
