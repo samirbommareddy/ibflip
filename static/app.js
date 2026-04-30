@@ -15,6 +15,10 @@ const handEl = document.getElementById("hand");
 const faceUpEl = document.getElementById("faceUp");
 const faceDownEl = document.getElementById("faceDown");
 const specialActionsEl = document.getElementById("specialActions");
+const handCountEl = document.getElementById("handCount");
+const faceUpCountEl = document.getElementById("faceUpCount");
+const faceDownCountEl = document.getElementById("faceDownCount");
+const actionCountEl = document.getElementById("actionCount");
 const opponentsEl = document.getElementById("opponents");
 const liveTopEl = document.getElementById("liveTop");
 const liveMetaEl = document.getElementById("liveMeta");
@@ -168,6 +172,15 @@ function renderPileSnapshot(snapshot) {
 
 function renderHuman(state) {
   const legal = new Set(state.legal_actions);
+  const specialActionIds = state.legal_actions.filter((actionId) => actionId >= 52 && actionId < 67);
+  const faceUpTotal = state.human.face_up_slots.reduce((total, slot) => total + slot.length, 0);
+  const faceDownTotal = (state.human_face_down_slots || []).filter((slot) => slot.available).length;
+
+  handCountEl.textContent = `${state.human.hand.length}`;
+  faceUpCountEl.textContent = `${faceUpTotal}`;
+  faceDownCountEl.textContent = `${faceDownTotal}`;
+  actionCountEl.textContent = `${specialActionIds.length}`;
+
   updateHandLayout(state.human.hand.length);
   handEl.innerHTML = "";
   state.human.hand.forEach((card, index) => {
@@ -206,17 +219,15 @@ function renderHuman(state) {
   });
 
   specialActionsEl.innerHTML = "";
-  state.legal_actions
-    .filter((actionId) => actionId >= 52 && actionId < 67)
-    .forEach((actionId) => {
-      const button = document.createElement("button");
-      button.className = `table-action legal ${actionClass(actionId)}`;
-      button.type = "button";
-      button.innerHTML = `<span class="action-icon">${specialActionIcon(actionId)}</span><span>${specialActionLabel(actionId)}</span>`;
-      button.disabled = !state.is_human_turn || isReplaying;
-      button.addEventListener("click", () => playAction(actionId));
-      specialActionsEl.appendChild(button);
-    });
+  specialActionIds.forEach((actionId) => {
+    const button = document.createElement("button");
+    button.className = `table-action legal ${actionClass(actionId)}`;
+    button.type = "button";
+    button.innerHTML = `<span class="action-icon">${specialActionIcon(actionId)}</span><span>${specialActionLabel(actionId)}</span>`;
+    button.disabled = !state.is_human_turn || isReplaying;
+    button.addEventListener("click", () => playAction(actionId));
+    specialActionsEl.appendChild(button);
+  });
   if (!specialActionsEl.children.length) {
     specialActionsEl.innerHTML = `<span class="hint">No table action available.</span>`;
   }
