@@ -777,6 +777,10 @@ body.replaying .move-card .playing-card {
   overflow: hidden;
 }
 
+#faceUp.slots {
+  align-items: stretch;
+}
+
 #faceDown.cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(54px, 64px));
@@ -802,6 +806,18 @@ body.replaying .move-card .playing-card {
   border-radius: 7px;
 }
 
+#hand.many-cards .playable-tag {
+  top: -5px;
+  right: 7px;
+  width: 12px;
+  height: 12px;
+  overflow: hidden;
+  padding: 0;
+  border: 2px solid #ffffff;
+  color: transparent;
+  text-indent: -999px;
+}
+
 #hand .playing-card:first-child {
   margin-left: 0;
 }
@@ -813,6 +829,7 @@ body.replaying .move-card .playing-card {
 }
 
 .human-slot {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
@@ -826,6 +843,43 @@ body.replaying .move-card .playing-card {
   justify-content: center;
   align-content: center;
   overflow: hidden;
+}
+
+.slot-stack.stacked {
+  position: relative;
+  display: block;
+  min-height: 70px;
+  overflow: visible;
+}
+
+.slot-stack.stacked .playing-card {
+  position: absolute;
+  top: calc(50% - 34px + var(--slot-index, 0) * 1.5px);
+  left: calc(50% - 24px + var(--slot-offset, 0) * 7px);
+  z-index: calc(var(--slot-index, 0) + 1);
+  margin: 0;
+  transform: rotate(calc(var(--slot-offset, 0) * 3deg));
+}
+
+.slot-stack.stacked .playing-card:not(:last-child) {
+  filter: saturate(0.74) brightness(0.98);
+}
+
+.slot-stack-count {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #0f172a;
+  color: var(--accent);
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 900;
+  box-shadow: 0 5px 10px rgba(15, 23, 42, 0.18);
 }
 
 .slot-label {

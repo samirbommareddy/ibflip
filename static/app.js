@@ -199,12 +199,27 @@ function renderHuman(state) {
   state.human.face_up_slots.forEach((slot, index) => {
     const slotEl = document.createElement("div");
     slotEl.className = "human-slot";
+    slotEl.dataset.stackCount = String(slot.length);
     slotEl.innerHTML = `<span class="slot-label">Up ${index + 1}</span>`;
     const row = document.createElement("div");
-    row.className = "card-row compact";
-    slot.forEach((card) => row.appendChild(cardButton(card, card.id, legal.has(card.id), { compact: true })));
+    row.className = `card-row compact slot-stack${slot.length > 1 ? " stacked" : ""}`;
+    slot.forEach((card, cardIndex) =>
+      row.appendChild(
+        cardButton(card, card.id, legal.has(card.id), {
+          compact: true,
+          slotIndex: cardIndex,
+          slotCount: slot.length,
+        }),
+      ),
+    );
     if (!slot.length) row.innerHTML = emptySlot();
     slotEl.appendChild(row);
+    if (slot.length > 1) {
+      const count = document.createElement("span");
+      count.className = "slot-stack-count";
+      count.textContent = `${slot.length}`;
+      slotEl.appendChild(count);
+    }
     faceUpEl.appendChild(slotEl);
   });
 
@@ -247,6 +262,11 @@ function cardButton(card, actionId, legal, options = {}) {
     const distance = options.handIndex - midpoint;
     button.style.setProperty("--hand-tilt", `${clamp(distance * 3, -9, 9)}deg`);
     button.style.setProperty("--hand-lift", `${Math.abs(distance) < 0.5 ? -8 : Math.abs(distance) < 1.5 ? -4 : 0}px`);
+  }
+  if (Number.isInteger(options.slotIndex) && Number.isInteger(options.slotCount)) {
+    const midpoint = (options.slotCount - 1) / 2;
+    button.style.setProperty("--slot-index", `${options.slotIndex}`);
+    button.style.setProperty("--slot-offset", `${options.slotIndex - midpoint}`);
   }
   if (legal) button.addEventListener("click", () => playAction(actionId));
   return button;
