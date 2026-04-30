@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IB-Flip</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>IB-Flip</h1>
+          <p id="status">No game started</p>
+        </div>
+        <button id="startButton" type="button">New Game</button>
+      </header>
+
+      <section class="table">
+        <section class="opponents" id="opponents"></section>
+
+        <section class="center">
+          <div class="pile">
+            <h2>Live Pile</h2>
+            <div id="liveTop" class="large-card muted">Empty</div>
+            <p id="liveMeta"></p>
+          </div>
+          <div class="pile">
+            <h2>Discard</h2>
+            <div id="discardTop" class="large-card muted">Empty</div>
+            <p id="discardMeta"></p>
+          </div>
+          <div class="log">
+            <h2>Game Log</h2>
+            <ol id="gameLog"></ol>
+          </div>
+        </section>
+
+        <section class="human">
+          <div class="zone">
+            <h2>Human Hand</h2>
+            <div id="hand" class="cards"></div>
+          </div>
+          <div class="zone">
+            <h2>Face-Up Cards</h2>
+            <div id="faceUp" class="slots"></div>
+          </div>
+          <div class="zone">
+            <h2>Face-Down Cards</h2>
+            <div id="faceDown" class="cards"></div>
+          </div>
+          <div class="zone">
+            <h2>Other Actions</h2>
+            <div id="specialActions" class="cards"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
