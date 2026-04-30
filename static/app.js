@@ -29,6 +29,7 @@ const discardCountBadgeEl = document.getElementById("discardCountBadge");
 const gameLogEl = document.getElementById("gameLog");
 const moveBannerEl = document.getElementById("moveBanner");
 const turnBadgeEl = document.getElementById("turnBadge");
+const animationLayerEl = document.getElementById("animationLayer");
 
 startButton.addEventListener("click", startGame);
 
@@ -87,6 +88,7 @@ async function request(path, options = {}) {
 async function renderState(state, options = {}) {
   latestState = state;
   document.body.classList.toggle("has-game", Boolean(state.session_id));
+  document.body.classList.toggle("human-turn", state.is_human_turn && !state.game_over);
   playerCountEl.value = String(state.num_players || playerCountEl.value);
   updateStatus(state);
   renderOpponents(state.opponents);
@@ -316,19 +318,23 @@ function emptyPile(label) {
 async function replayMoves(moves, delayMs) {
   isReplaying = true;
   document.body.classList.add("replaying");
+  document.body.classList.remove("human-turn");
   disableActions(true);
   for (const [index, move] of moves.entries()) {
     highlightActor(move.player_index);
     setTurnBadge(move.player_index === 0 ? "Your Move" : `Player ${move.player_index + 1}`, move.player_index === 0);
     statusEl.textContent = move.player_index === 0 ? "Your move is resolving" : `Player ${move.player_index + 1} is acting`;
     setMoveBanner(move.message, move, { step: index + 1, total: moves.length });
+    const motion = animateReplayMove(move);
+    await sleep(180);
     renderReplayPileSnapshot(move);
     pulsePiles(move);
     addLog(move.message, move.player_index === 0 ? "you" : "bot");
-    await sleep(delayMs);
+    await Promise.all([motion, sleep(Math.max(0, delayMs - 180))]);
   }
   isReplaying = false;
   document.body.classList.remove("replaying");
+  document.body.classList.toggle("human-turn", latestState?.is_human_turn && !latestState?.game_over);
   disableActions(false);
   updateStatus(latestState);
   renderPiles(latestState);
@@ -365,14 +371,23 @@ function renderReplayPileSnapshot(move) {
 }
 
 function pulsePiles(move) {
+  if (move.action_id === 52) {
+    pulseElement(liveTopEl, "pickup-pop");
+    pulseElement(discardTopEl, "discard-pop");
+    return;
+  }
+  if (move.action_id === 55 || move.discard_count > 0) {
+    pulseElement(liveTopEl);
+    pulseElement(discardTopEl, "discard-pop");
+    return;
+  }
   pulseElement(liveTopEl);
-  if (move.action_id === 52 || move.discard_count > 0) pulseElement(discardTopEl);
 }
 
-function pulseElement(element) {
-  element.classList.remove("pile-pop");
+function pulseElement(element, className = "pile-pop") {
+  element.classList.remove(className);
   void element.offsetWidth;
-  element.classList.add("pile-pop");
+  element.classList.add(className);
 }
 
 function highlightActor(playerIndex) {
@@ -437,6 +452,95 @@ function actionClass(actionId) {
   if (actionId === 52) return "danger-action";
   if (actionId === 55) return "commit-action";
   return "utility-action";
+}
+
+function animateReplayMove(move) {
+  if (!animationLayerEl || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return Promise.resolve();
+  }
+  if (move.card) return animateFlyingCard(move);
+  if (move.action_id === 52) return animateToken(liveTopEl, actorElement(move.player_index), "pickup", "Pickup");
+  if (move.action_id === 55) return animateToken(liveTopEl, moveBannerEl, "discard", "End");
+  if (move.action_id === 53) return animateToken(discardTopEl, liveTopEl, "nine", "9 draw");
+  if (move.action_id === 54) return animateToken(moveBannerEl, liveTopEl, "draw", "Draw");
+  return animateToken(actorElement(move.player_index), moveBannerEl, "action", "Action");
+}
+
+function animateFlyingCard(move) {
+  const actor = actorElement(move.player_index);
+  const from = elementCenter(actor);
+  const to = elementCenter(liveTopEl);
+  const ghost = document.createElement("div");
+  ghost.className = "flight-card";
+  ghost.innerHTML = cardHTML(move.card, { large: true });
+  return animateGhost(ghost, from, to, {
+    duration: 760,
+    startScale: 0.72,
+    peakScale: 1.08,
+    endScale: 0.9,
+    startRotate: move.player_index === 0 ? -8 : 8,
+    endRotate: move.player_index === 0 ? 3 : -4,
+  });
+}
+
+function animateToken(fromElement, toElement, kind, label) {
+  const ghost = document.createElement("div");
+  ghost.className = `flight-token ${kind}`;
+  ghost.textContent = label;
+  return animateGhost(ghost, elementCenter(fromElement), elementCenter(toElement), {
+    duration: kind === "pickup" ? 840 : 660,
+    startScale: 0.82,
+    peakScale: 1.12,
+    endScale: 0.88,
+    startRotate: -3,
+    endRotate: 3,
+  });
+}
+
+function animateGhost(ghost, from, to, options) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  ghost.style.left = `${from.x}px`;
+  ghost.style.top = `${from.y}px`;
+  animationLayerEl.appendChild(ghost);
+  const animation = ghost.animate(
+    [
+      {
+        transform: `translate(-50%, -50%) scale(${options.startScale}) rotate(${options.startRotate}deg)`,
+        opacity: 0,
+        filter: "brightness(1.08)",
+      },
+      {
+        transform: `translate(calc(-50% + ${dx * 0.56}px), calc(-50% + ${dy * 0.42 - 34}px)) scale(${options.peakScale}) rotate(${options.endRotate}deg)`,
+        opacity: 1,
+        filter: "brightness(1.05)",
+        offset: 0.58,
+      },
+      {
+        transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(${options.endScale}) rotate(0deg)`,
+        opacity: 0,
+        filter: "brightness(1)",
+      },
+    ],
+    {
+      duration: options.duration,
+      easing: "cubic-bezier(0.2, 0.78, 0.2, 1)",
+      fill: "forwards",
+    },
+  );
+  return animation.finished.catch(() => undefined).finally(() => ghost.remove());
+}
+
+function actorElement(playerIndex) {
+  return document.querySelector(`[data-player-index="${playerIndex}"]`) || moveBannerEl;
+}
+
+function elementCenter(element) {
+  const box = element.getBoundingClientRect();
+  return {
+    x: box.left + box.width / 2,
+    y: box.top + box.height / 2,
+  };
 }
 
 function gameOverText(state) {

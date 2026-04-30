@@ -48,6 +48,58 @@ select {
   color: #f8fafc;
 }
 
+.animation-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.flight-card,
+.flight-token {
+  position: fixed;
+  display: grid;
+  place-items: center;
+  will-change: transform, opacity;
+}
+
+.flight-card {
+  width: 92px;
+  filter: drop-shadow(0 22px 24px rgba(15, 23, 42, 0.28));
+}
+
+.flight-card .playing-card {
+  width: 86px;
+}
+
+.flight-token {
+  min-width: 82px;
+  min-height: 38px;
+  border: 2px solid rgba(255, 255, 255, 0.58);
+  border-radius: 999px;
+  padding: 8px 14px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.28);
+}
+
+.flight-token.pickup {
+  background: linear-gradient(135deg, #f97316, #dc2626);
+}
+
+.flight-token.discard {
+  background: linear-gradient(135deg, #22c55e, #0f766e);
+}
+
+.flight-token.nine,
+.flight-token.draw,
+.flight-token.action {
+  background: linear-gradient(135deg, #0ea5e9, #2563eb);
+}
+
 .topbar {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(360px, auto);
@@ -134,6 +186,10 @@ select {
   box-shadow: 0 10px 20px rgba(250, 204, 21, 0.22);
 }
 
+body.human-turn .turn-badge.active {
+  animation: turnBadgeReady 1150ms ease-in-out infinite alternate;
+}
+
 .table {
   position: relative;
   display: grid;
@@ -215,6 +271,10 @@ select {
     0 0 0 3px rgba(250, 204, 21, 0.34),
     0 14px 34px rgba(0, 0, 0, 0.24);
   animation: seatPulse 1000ms ease-in-out infinite alternate;
+}
+
+body.human-turn .human.is-acting {
+  animation: yourTurnPulse 1150ms ease-in-out infinite alternate;
 }
 
 .opponent {
@@ -485,6 +545,14 @@ h2 {
 
 body.replaying .move-strip {
   animation: moveGlow 650ms ease-out;
+}
+
+body.human-turn:not(.replaying) .move-strip {
+  border-color: rgba(250, 204, 21, 0.92);
+  box-shadow:
+    0 0 0 2px rgba(250, 204, 21, 0.34),
+    0 14px 30px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
 
 .move-card {
@@ -1030,12 +1098,47 @@ body.replaying .playing-card.legal {
   animation: pilePop 420ms ease-out;
 }
 
+.pickup-pop {
+  animation: pickupPop 560ms ease-out;
+}
+
+.discard-pop {
+  animation: discardPop 540ms ease-out;
+}
+
 @keyframes seatPulse {
   from {
     transform: translateY(0);
   }
   to {
     transform: translateY(-2px);
+  }
+}
+
+@keyframes yourTurnPulse {
+  from {
+    transform: translateY(0);
+    box-shadow:
+      0 0 0 3px rgba(250, 204, 21, 0.32),
+      0 14px 34px rgba(0, 0, 0, 0.24);
+  }
+  to {
+    transform: translateY(-2px);
+    box-shadow:
+      0 0 0 5px rgba(250, 204, 21, 0.48),
+      0 18px 38px rgba(0, 0, 0, 0.3);
+  }
+}
+
+@keyframes turnBadgeReady {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-1px);
+    box-shadow:
+      0 0 0 4px rgba(250, 204, 21, 0.22),
+      0 12px 22px rgba(250, 204, 21, 0.28);
   }
 }
 
@@ -1068,6 +1171,32 @@ body.replaying .playing-card.legal {
   }
   to {
     transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes pickupPop {
+  0% {
+    transform: translateY(0) scale(1);
+    filter: saturate(1);
+  }
+  45% {
+    transform: translateY(-5px) scale(1.05);
+    filter: saturate(1.25) brightness(1.08);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    filter: saturate(1);
+  }
+}
+
+@keyframes discardPop {
+  0% {
+    transform: scale(0.96);
+    filter: brightness(1.12);
+  }
+  100% {
+    transform: scale(1);
     filter: brightness(1);
   }
 }
