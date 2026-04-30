@@ -13,6 +13,7 @@
           <h1>IB-Flip</h1>
           <p id="status">No game started</p>
         </div>
+        <span id="turnBadge" class="turn-badge">Not Started</span>
         <button id="startButton" type="button">New Game</button>
       </header>
 
@@ -20,18 +21,19 @@
         <section class="opponents" id="opponents"></section>
 
         <section class="center">
-          <div class="pile">
+          <div class="pile live-zone">
             <h2>Live Pile</h2>
             <div id="liveTop" class="large-card muted">Empty</div>
             <p id="liveMeta"></p>
           </div>
-          <div class="pile">
+          <div class="move-strip" id="moveBanner">Start a new game</div>
+          <div class="pile discard-zone">
             <h2>Discard</h2>
             <div id="discardTop" class="large-card muted">Empty</div>
             <p id="discardMeta"></p>
           </div>
           <div class="log">
-            <h2>Game Log</h2>
+            <h2>Recent Moves</h2>
             <ol id="gameLog"></ol>
           </div>
         </section>

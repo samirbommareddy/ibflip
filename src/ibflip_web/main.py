@@ -18,6 +18,7 @@ ACTIVE_GAMES: dict[str, IBFlipEngine] = {}
 BOT_RNG = random.Random()
 HUMAN_PLAYER = 0
 BOT_STEP_LIMIT = 500
+BOT_REPLAY_DELAY_MS = 650
 
 app = FastAPI(title="IB-Flip API")
 app.add_middleware(
@@ -59,14 +60,54 @@ def card_label(card_id: int) -> str:
     return f"{rank_names[card.rank]} of {suit_names[card.suit]}"
 
 
+def serialize_card(card_id: int) -> dict[str, Any]:
+    card = card_from_id(card_id)
+    rank_names = {
+        Rank.THREE: "3",
+        Rank.FOUR: "4",
+        Rank.FIVE: "5",
+        Rank.SIX: "6",
+        Rank.SEVEN: "7",
+        Rank.EIGHT: "8",
+        Rank.NINE: "9",
+        Rank.TEN: "10",
+        Rank.JACK: "J",
+        Rank.QUEEN: "Q",
+        Rank.KING: "K",
+        Rank.ACE: "A",
+        Rank.TWO: "2",
+    }
+    suit_names = {
+        Suit.HEARTS: "hearts",
+        Suit.DIAMONDS: "diamonds",
+        Suit.CLUBS: "clubs",
+        Suit.SPADES: "spades",
+    }
+    suit_symbols = {
+        Suit.HEARTS: "♥",
+        Suit.DIAMONDS: "♦",
+        Suit.CLUBS: "♣",
+        Suit.SPADES: "♠",
+    }
+    return {
+        "id": card_id,
+        "rank": rank_names[card.rank],
+        "suit": suit_names[card.suit],
+        "symbol": suit_symbols[card.suit],
+        "short": f"{rank_names[card.rank]}{suit_symbols[card.suit]}",
+        "label": card_label(card_id),
+        "color": "red" if card.suit in {Suit.HEARTS, Suit.DIAMONDS} else "black",
+    }
+
+
 def action_label(action_id: int) -> str:
     if 0 <= action_id < 52:
-        return f"played {card_label(action_id)}"
+        return f"played {serialize_card(action_id)['short']}"
     labels = {
         52: "picked up the live pile",
         53: "resolved a 9 draw",
         54: "revealed the draw pile top card",
-        55: "ended their play group",
+        55: "ended the play group",
         67: "played face-down slot 1",
         68: "played face-down slot 2",
         69: "played face-down slot 3",
@@ -79,12 +120,12 @@ def legal_actions(engine: IBFlipEngine) -> list[int]:
 
 
 def serialize_slot(slot: list[int]) -> list[dict[str, Any]]:
-    return [{"id": card_id, "label": card_label(card_id)} for card_id in slot]
+    return [serialize_card(card_id) for card_id in slot]
 
 
 def serialize_player(engine: IBFlipEngine, player_index: int, *, reveal_hand: bool) -> dict[str, Any]:
     player = engine.state.players[player_index]
-    hand = [{"id": card_id, "label": card_label(card_id)} for card_id in player.hand] if reveal_hand else []
+    hand = [serialize_card(card_id) for card_id in player.hand] if reveal_hand else []
     return {
         "player_index": player_index,
         "hand": hand,
@@ -96,10 +137,34 @@ def serialize_player(engine: IBFlipEngine, player_index: int, *, reveal_hand: bo
     }
 
 
-def serialize_state(session_id: str, engine: IBFlipEngine, log: list[str] | None = None) -> dict[str, Any]:
+def serialize_move(
+    engine: IBFlipEngine,
+    *,
+    player_index: int,
+    action_id: int,
+    message: str,
+) -> dict[str, Any]:
+    return {
+        "player_index": player_index,
+        "action_id": action_id,
+        "message": message,
+        "card": serialize_card(action_id) if 0 <= action_id < 52 else None,
+        "live_pile_top": serialize_card(engine.state.live_cards[-1]) if engine.state.live_cards else None,
+        "live_pile_count": len(engine.state.live_cards),
+        "discard_count": len(engine.state.discard_pile),
+        "draw_count": len(engine.state.draw_pile),
+    }
+
+
+def serialize_state(
+    session_id: str,
+    engine: IBFlipEngine,
+    log: list[str] | None = None,
+    moves: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     legal = legal_actions(engine) if engine.state.phase is not Phase.GAME_OVER else []
     action_mask = [index in set(legal) for index in range(ACTION_SPACE_SIZE)]
-    live_cards = [{"id": card_id, "label": card_label(card_id)} for card_id in engine.state.live_cards]
+    live_cards = [serialize_card(card_id) for card_id in engine.state.live_cards]
     return {
         "session_id": session_id,
         "phase": engine.state.phase.name,
@@ -123,7 +188,7 @@ def serialize_state(session_id: str, engine: IBFlipEngine, log: list[str] | None
         "live_pile_top": live_cards[-1] if live_cards else None,
         "discard_count": len(engine.state.discard_pile),
         "discard_top": (
-            {"id": engine.state.discard_pile[-1], "label": card_label(engine.state.discard_pile[-1])}
+            serialize_card(engine.state.discard_pile[-1])
             if engine.state.discard_pile
             else None
         ),
@@ -131,11 +196,14 @@ def serialize_state(session_id: str, engine: IBFlipEngine, log: list[str] | None
         "legal_actions": legal,
         "action_mask": action_mask,
         "log": log or [],
+        "moves": moves or [],
+        "bot_replay_delay_ms": BOT_REPLAY_DELAY_MS,
     }
 
 
-def run_bots_until_human_turn(engine: IBFlipEngine) -> list[str]:
+def run_bots_until_human_turn(engine: IBFlipEngine) -> tuple[list[str], list[dict[str, Any]]]:
     log: list[str] = []
+    moves: list[dict[str, Any]] = []
     bot_steps = 0
     while engine.state.phase is not Phase.GAME_OVER and engine.state.current_player != HUMAN_PLAYER:
         bot_steps += 1
@@ -154,8 +222,17 @@ def run_bots_until_human_turn(engine: IBFlipEngine) -> list[str]:
         except IllegalActionError as exc:
             log.append(f"Player {player_index + 1} attempted illegal action {action_id}: {exc}")
             break
-        log.append(f"Player {player_index + 1} {action_label(action_id)}.")
-    return log
+        message = f"Player {player_index + 1} {action_label(action_id)}."
+        log.append(message)
+        moves.append(
+            serialize_move(
+                engine,
+                player_index=player_index,
+                action_id=action_id,
+                message=message,
+            )
+        )
+    return log, moves
 
 
 def get_engine(session_id: str) -> IBFlipEngine:
@@ -178,8 +255,9 @@ def start_game() -> dict[str, Any]:
     engine.auto_fix_hands_randomly()
     ACTIVE_GAMES[session_id] = engine
     log = ["Started a new 4-player game."]
-    log.extend(run_bots_until_human_turn(engine))
-    return serialize_state(session_id, engine, log)
+    bot_log, moves = run_bots_until_human_turn(engine)
+    log.extend(bot_log)
+    return serialize_state(session_id, engine, log, moves)
 
 
 @app.get("/state/{session_id}")
@@ -196,8 +274,9 @@ def play(session_id: str, request: PlayRequest) -> dict[str, Any]:
         return serialize_state(session_id, engine, ["Game is already over."])
     if engine.state.current_player != HUMAN_PLAYER:
         log.append("It was not the human turn; bots advanced first.")
-        log.extend(run_bots_until_human_turn(engine))
-        return serialize_state(session_id, engine, log)
+        bot_log, moves = run_bots_until_human_turn(engine)
+        log.extend(bot_log)
+        return serialize_state(session_id, engine, log, moves)
 
     action_id = request.action_id
     actions = legal_actions(engine)
@@ -209,6 +288,17 @@ def play(session_id: str, request: PlayRequest) -> dict[str, Any]:
     except IllegalActionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    log.append(f"You {action_label(action_id)}.")
-    log.extend(run_bots_until_human_turn(engine))
-    return serialize_state(session_id, engine, log)
+    message = f"You {action_label(action_id)}."
+    log.append(message)
+    moves = [
+        serialize_move(
+            engine,
+            player_index=HUMAN_PLAYER,
+            action_id=action_id,
+            message=message,
+        )
+    ]
+    bot_log, bot_moves = run_bots_until_human_turn(engine)
+    log.extend(bot_log)
+    moves.extend(bot_moves)
+    return serialize_state(session_id, engine, log, moves)
