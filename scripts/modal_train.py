@@ -52,7 +52,9 @@ def train(hours: float, name: str, extra: str = "") -> str:
 
 @app.local_entrypoint()
 def main(hours: float = 4.0, name: str = "main", extra: str = ""):
-    print(train.remote(hours, name, extra))
+    # spawn() so the run survives this client exiting (use with --detach).
+    call = train.spawn(hours, name, extra)
+    print("spawned", call.object_id)
 
 
 @app.function(cpu=1, volumes={"/runs": volume}, timeout=600)

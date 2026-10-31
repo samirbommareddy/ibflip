@@ -283,7 +283,9 @@ class Room:
             async with self.lock:
                 if self._next_auto_delay() is None:
                     continue
-                self._auto_step()
+                # Bot thinking (search) runs off the event loop so other
+                # rooms stay responsive; the room lock keeps state stable.
+                await asyncio.to_thread(self._auto_step)
                 await self.broadcast(self.drain_events())
 
     def _next_auto_delay(self) -> float | None:
