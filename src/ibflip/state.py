@@ -46,6 +46,9 @@ class Player:
     active: bool = True
     finish_status: FinishStatus | None = None
     fixing_done: bool = False
+    # Cards in ``hand`` that every player has seen enter it (picked-up live
+    # pile, failed reveals, dealt 3s, cards swapped out of face-up slots...).
+    known_hand: list[int] = field(default_factory=list)
 
     def has_any_cards(self) -> bool:
         return bool(self.hand or any(self.face_up_slots) or any(card is not None for card in self.face_down_slots))

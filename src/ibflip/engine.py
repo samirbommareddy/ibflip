@@ -44,6 +44,15 @@ class IBFlipEngine:
         self.num_players = num_players
         self.rng = random.Random(seed)
         self.state = GameState(players=[Player() for _ in range(num_players)])
+        # Public, append-only stream of what happened (for UIs / replays).
+        # Consumers may clear it at any time.
+        self.events: list[dict] = []
+        self.record_events = True
+
+    def _emit(self, kind: str, **data) -> None:
+        if self.record_events:
+            data["kind"] = kind
+            self.events.append(data)
 
     def card(self, value: int) -> Card:
         return card_from_id(value)
@@ -70,12 +79,15 @@ class IBFlipEngine:
                 player.hand.append(deck.pop(0))
 
         self.state = GameState(players=players, draw_pile=deck, phase=Phase.FIXING_HANDS, current_player=0)
+        self.events = []
+        self._emit("deal")
         return self.state
 
     def clone(self) -> IBFlipEngine:
         clone = IBFlipEngine(self.num_players)
         clone.rng.setstate(self.rng.getstate())
         clone.state = deepcopy(self.state)
+        clone.record_events = self.record_events
         return clone
 
     def set_state(self, state: GameState) -> None:
@@ -172,6 +184,67 @@ class IBFlipEngine:
         self.state.fix_selected_card_id = None
         self._start_game_after_fixing()
 
+    # ------------------------------------------------------------------
+    # Simultaneous fixing API (used by multiplayer front-ends, where every
+    # player fixes their own hand at the same time).
+    # ------------------------------------------------------------------
+    def fix_swap_card(self, player_index: int, card: int, slot_index: int) -> None:
+        player = self._fixing_player(player_index)
+        if card not in player.hand or not (0 <= slot_index < len(player.face_up_slots)) or not player.face_up_slots[slot_index]:
+            raise IllegalActionError("illegal swap")
+        player.hand.remove(card)
+        slot = player.face_up_slots[slot_index]
+        if len(slot) == 1:
+            taken = [slot.pop()]
+        else:
+            # Swapping onto a stack swaps the whole stack back into the hand.
+            taken = list(slot)
+            slot.clear()
+        player.hand.extend(taken)
+        player.known_hand.extend(taken)
+        if card in player.known_hand:
+            player.known_hand.remove(card)
+        slot.append(card)
+
+    def fix_stack_card(self, player_index: int, card: int, slot_index: int) -> None:
+        player = self._fixing_player(player_index)
+        if card not in player.hand or not (0 <= slot_index < len(player.face_up_slots)):
+            raise IllegalActionError("illegal stack")
+        slot = player.face_up_slots[slot_index]
+        if not slot or self.rank(slot[-1]) is not self.rank(card):
+            raise IllegalActionError("can only stack matching ranks")
+        player.hand.remove(card)
+        if card in player.known_hand:
+            player.known_hand.remove(card)
+        slot.append(card)
+        self._draw_to_three(player)
+
+    def fix_unstack_card(self, player_index: int, slot_index: int) -> None:
+        player = self._fixing_player(player_index)
+        if not (0 <= slot_index < len(player.face_up_slots)) or len(player.face_up_slots[slot_index]) < 2:
+            raise IllegalActionError("nothing to take back")
+        if len(player.hand) >= 3:
+            raise IllegalActionError("hand already full")
+        card = player.face_up_slots[slot_index].pop()
+        player.hand.append(card)
+        player.known_hand.append(card)
+
+    def fix_done(self, player_index: int) -> bool:
+        """Mark a player as ready. Returns True when the game has started."""
+        player = self._fixing_player(player_index)
+        player.fixing_done = True
+        if all(p.fixing_done for p in self.state.players):
+            self.state.fix_selected_card_id = None
+            self._start_game_after_fixing()
+            self._update_phase()
+            return True
+        return False
+
+    def _fixing_player(self, player_index: int) -> Player:
+        if self.state.phase is not Phase.FIXING_HANDS:
+            raise IllegalActionError("not in fixing phase")
+        return self.state.players[player_index]
+
     def _current_player(self) -> Player:
         return self.state.players[self.state.current_player]
 
@@ -236,6 +309,9 @@ class IBFlipEngine:
         player.hand.remove(selected)
         slot_card = player.face_up_slots[slot_index].pop()
         player.hand.append(slot_card)
+        player.known_hand.append(slot_card)
+        if selected in player.known_hand:
+            player.known_hand.remove(selected)
         player.face_up_slots[slot_index].append(selected)
         self.state.fix_selected_card_id = None
 
@@ -244,18 +320,23 @@ class IBFlipEngine:
         if selected is None:
             raise IllegalActionError("no selected card")
         player.hand.remove(selected)
+        if selected in player.known_hand:
+            player.known_hand.remove(selected)
         player.face_up_slots[slot_index].append(selected)
         self.state.fix_selected_card_id = None
         self._draw_to_three(player)
 
     def _fix_take_from_stack(self, player: Player, slot_index: int) -> None:
-        player.hand.append(player.face_up_slots[slot_index].pop())
+        card = player.face_up_slots[slot_index].pop()
+        player.hand.append(card)
+        player.known_hand.append(card)
 
     def _start_game_after_fixing(self) -> None:
         player_index, start_card = self._find_starting_player_and_card()
         self.state.current_player = player_index
         self.state.required_start_card_id = start_card
         self.state.phase = Phase.EARLY_GAME if self.state.draw_pile else Phase.MIDDLE_GAME
+        self._emit("start", player=player_index, card=start_card)
 
     def _find_starting_player_and_card(self) -> tuple[int, int]:
         best: tuple[int, int, int, int] | None = None
@@ -348,6 +429,7 @@ class IBFlipEngine:
         source = self._active_source()
         self._remove_card_from_source(player, value, source)
         self.state.live_cards.append(value)
+        self._emit("play", player=self.state.current_player, card=value, source=source)
 
         context = self.state.turn_context
         if context.open_group_rank is None:
@@ -362,6 +444,8 @@ class IBFlipEngine:
     def _remove_card_from_source(self, player: Player, value: int, source: str | None) -> None:
         if source == "hand":
             player.hand.remove(value)
+            if value in player.known_hand:
+                player.known_hand.remove(value)
             return
         if source == "face_up":
             for slot in player.face_up_slots:
@@ -392,6 +476,7 @@ class IBFlipEngine:
             index = self.rng.randrange(len(self.state.discard_pile))
             drawn = self.state.discard_pile.pop(index)
             self.state.live_cards.append(drawn)
+            self._emit("nine_draw", player=self.state.current_player, card=drawn)
             self.state.turn_context.played_card_ids.append(drawn)
             self.state.pending = None
             self._resolve_or_defer_for_latest_card(drawn)
@@ -425,8 +510,13 @@ class IBFlipEngine:
             self._clear_turn_context()
             self._flip_live_cards(player_index, flip_rank, play_again=True)
             self._draw_to_three_if_early(self.state.players[player_index])
-            if self.state.phase is not Phase.GAME_OVER and flip_rank not in {Rank.FOUR, Rank.NINE}:
-                self._finish_or_continue(player_index, player_index)
+            if self.state.phase is not Phase.GAME_OVER:
+                if flip_rank not in {Rank.FOUR, Rank.NINE}:
+                    self._finish_or_continue(player_index, player_index)
+                elif not self.state.players[player_index].has_any_cards():
+                    # Finished by flipping 4s (and no 3 to take) or 9s: legal
+                    # only if it is now somebody else's turn.
+                    self._finish_or_continue(player_index, self.state.current_player)
             return
 
         next_player = self._next_player_index(player_index)
@@ -435,10 +525,12 @@ class IBFlipEngine:
         elif effect_rank is Rank.THREE and effect_count % 2 == 1:
             self.state.direction *= -1
             next_player = self._next_player_index(player_index)
+            self._emit("reverse", player=player_index, direction=self.state.direction)
         elif effect_rank is Rank.FOUR:
             self.state.pending = PendingEffect(PendingKind.FOUR_LOOP, player_index)
         elif effect_rank is Rank.EIGHT:
             next_player = self._advance_index(player_index, effect_count + 1)
+            self._emit("skip", player=player_index, count=effect_count)
 
         self._clear_turn_context()
         self._draw_to_three_if_early(self.state.players[player_index])
@@ -457,13 +549,17 @@ class IBFlipEngine:
         self.state.pending = None
         old_live = list(self.state.live_cards)
         pre_existing_discard = list(self.state.discard_pile)
+        self._emit("flip", player=player_index, rank=int(flip_rank), count=len(old_live))
 
         if flip_rank is Rank.THREE:
             threes = [card for card in old_live if self.rank(card) is Rank.THREE]
             non_threes = [card for card in old_live if self.rank(card) is not Rank.THREE]
             for other_index in self._other_active_players(player_index):
                 if threes:
-                    self.state.players[other_index].hand.append(threes.pop(0))
+                    dealt = threes.pop(0)
+                    self.state.players[other_index].hand.append(dealt)
+                    self.state.players[other_index].known_hand.append(dealt)
+                    self._emit("deal_three", player=other_index, card=dealt)
             self.state.discard_pile.extend(non_threes + threes)
             self.state.live_cards = []
             self.state.current_player = player_index
@@ -507,6 +603,8 @@ class IBFlipEngine:
             if self.rank(value) is Rank.THREE:
                 self.state.discard_pile.remove(value)
                 self.state.players[player_index].hand.append(value)
+                self.state.players[player_index].known_hand.append(value)
+                self._emit("take_three", player=player_index, card=value)
                 return
 
     def _other_active_players(self, player_index: int) -> list[int]:
@@ -523,8 +621,11 @@ class IBFlipEngine:
 
     def _draw_to_three(self, player: Player) -> None:
         missing = max(0, 3 - len(player.hand))
-        for _ in range(min(missing, len(self.state.draw_pile))):
+        count = min(missing, len(self.state.draw_pile))
+        for _ in range(count):
             player.hand.append(self.state.draw_pile.pop(0))
+        if count:
+            self._emit("draw", player=self.state.players.index(player), count=count)
 
     def _finish_or_continue(self, player_index: int, next_player: int) -> None:
         player = self.state.players[player_index]
@@ -536,6 +637,7 @@ class IBFlipEngine:
             player.finish_status = FinishStatus.LEGAL_WIN
             self.state.winner = player_index
             self.state.phase = Phase.GAME_OVER
+            self._emit("win", player=player_index)
             return
         self.state.current_player = next_player
 
@@ -545,9 +647,12 @@ class IBFlipEngine:
         player.finish_status = FinishStatus.ILLEGAL_LOSS
         self.state.loser = player_index
         self.state.phase = Phase.GAME_OVER
+        self._emit("lose", player=player_index)
 
     def _pick_up_live_pile(self, player_index: int) -> None:
+        self._emit("pickup", player=player_index, cards=list(self.state.live_cards))
         self.state.players[player_index].hand.extend(self.state.live_cards)
+        self.state.players[player_index].known_hand.extend(self.state.live_cards)
         self.state.live_cards = []
         self.state.pending = None
         self._clear_turn_context()
@@ -570,12 +675,15 @@ class IBFlipEngine:
 
     def _reveal_draw_pile_top(self) -> None:
         revealed = self.state.draw_pile.pop(0)
-        if can_play_on_index(RANK_INDEX_BY_ID[revealed], self._target_rank_index()):
+        playable = can_play_on_index(RANK_INDEX_BY_ID[revealed], self._target_rank_index())
+        self._emit("reveal", player=self.state.current_player, card=revealed, ok=playable)
+        if playable:
             self.state.live_cards.append(revealed)
             self.state.turn_context = TurnContext(open_group_rank=self.rank(revealed), played_card_ids=[revealed], source="draw")
             self._resolve_or_defer_for_latest_card(revealed)
         else:
             self.state.players[self.state.current_player].hand.append(revealed)
+            self.state.players[self.state.current_player].known_hand.append(revealed)
             self._pick_up_live_pile(self.state.current_player)
             self._advance_to_next_player()
 
@@ -586,12 +694,15 @@ class IBFlipEngine:
         if value is None:
             raise IllegalActionError("empty face-down slot")
         player.face_down_slots[slot_index] = None
-        if self._is_legal_card_play(value):
+        ok = self._is_legal_card_play(value)
+        self._emit("face_down", player=player_index, slot=slot_index, card=value, ok=ok)
+        if ok:
             self.state.live_cards.append(value)
             self.state.turn_context = TurnContext(open_group_rank=self.rank(value), played_card_ids=[value], source="face_down")
             self._resolve_or_defer_for_latest_card(value)
         else:
             player.hand.append(value)
+            player.known_hand.append(value)
             self._pick_up_live_pile(player_index)
             self._advance_to_next_player()
 

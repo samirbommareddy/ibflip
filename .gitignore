@@ -12,3 +12,4 @@ wheels/
 
 # Local Netlify folder
 .netlify
+runs/

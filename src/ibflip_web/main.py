@@ -1,26 +1,38 @@
+"""FastAPI backend: rooms for friends + bots over WebSockets.
+
+REST
+    POST /api/rooms              {name, bots?: [level...], autostart?}  -> {code, token, seat}
+    POST /api/rooms/{code}/join  {name}                                  -> {code, token, seat}
+    GET  /api/rooms/{code}                                               -> lobby info
+WebSocket
+    /ws/{code}?token=...   server pushes {"type": "state", ...} after every change.
+    client messages:
+        {"type": "action", "action": <engine action id>}
+        {"type": "fix", "op": "swap"|"stack"|"unstack"|"done", "card": id, "slot": i}
+        {"type": "add_bot", "level": "easy"|"medium"|"hard"}   (host)
+        {"type": "set_bot", "seat": i, "level": ...}            (host)
+        {"type": "remove", "seat": i}                           (host)
+        {"type": "start"} / {"type": "rematch"}                 (host)
+        {"type": "chat", "text": "..."} / {"type": "emote", "emoji": "..."}
+"""
+
 from __future__ import annotations
 
-import random
+import time
+from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
-from ibflip import IBFlipEngine, IllegalActionError
-from ibflip.actions import ACTION_SPACE_SIZE
-from ibflip.cards import Rank, Suit, card_from_id
-from ibflip.state import Phase
+from ibflip import IllegalActionError
+from ibflip.ai.agents import model_available
+from ibflip_web.rooms import BOT_LEVELS, MAX_SEATS, RoomRegistry, _safe_send
 
-
-ACTIVE_GAMES: dict[str, IBFlipEngine] = {}
-BOT_RNG = random.Random()
-HUMAN_PLAYER = 0
-BOT_STEP_LIMIT = 500
-BOT_REPLAY_DELAY_MS = 1300
-
-app = FastAPI(title="IB-Flip API")
+app = FastAPI(title="IB-Flip")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,285 +41,166 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-class PlayRequest(BaseModel):
-    action_id: int
-
-
-class StartRequest(BaseModel):
-    num_players: int = 4
+registry = RoomRegistry()
+STATIC_DIR = Path(__file__).resolve().parents[2] / "static"
+ALLOWED_EMOTES = {"👏", "😂", "😱", "🔥", "😤", "🤝", "👀", "💀"}
 
 
-def card_label(card_id: int) -> str:
-    card = card_from_id(card_id)
-    rank_names = {
-        Rank.THREE: "3",
-        Rank.FOUR: "4",
-        Rank.FIVE: "5",
-        Rank.SIX: "6",
-        Rank.SEVEN: "7",
-        Rank.EIGHT: "8",
-        Rank.NINE: "9",
-        Rank.TEN: "10",
-        Rank.JACK: "J",
-        Rank.QUEEN: "Q",
-        Rank.KING: "K",
-        Rank.ACE: "A",
-        Rank.TWO: "2",
-    }
-    suit_names = {
-        Suit.HEARTS: "Hearts",
-        Suit.DIAMONDS: "Diamonds",
-        Suit.CLUBS: "Clubs",
-        Suit.SPADES: "Spades",
-    }
-    return f"{rank_names[card.rank]} of {suit_names[card.suit]}"
+class CreateRoom(BaseModel):
+    name: str = Field("Player", max_length=24)
+    bots: list[str] = Field(default_factory=list)
+    autostart: bool = False
 
 
-def serialize_card(card_id: int) -> dict[str, Any]:
-    card = card_from_id(card_id)
-    rank_names = {
-        Rank.THREE: "3",
-        Rank.FOUR: "4",
-        Rank.FIVE: "5",
-        Rank.SIX: "6",
-        Rank.SEVEN: "7",
-        Rank.EIGHT: "8",
-        Rank.NINE: "9",
-        Rank.TEN: "10",
-        Rank.JACK: "J",
-        Rank.QUEEN: "Q",
-        Rank.KING: "K",
-        Rank.ACE: "A",
-        Rank.TWO: "2",
-    }
-    suit_names = {
-        Suit.HEARTS: "hearts",
-        Suit.DIAMONDS: "diamonds",
-        Suit.CLUBS: "clubs",
-        Suit.SPADES: "spades",
-    }
-    suit_symbols = {
-        Suit.HEARTS: "♥",
-        Suit.DIAMONDS: "♦",
-        Suit.CLUBS: "♣",
-        Suit.SPADES: "♠",
-    }
-    return {
-        "id": card_id,
-        "rank": rank_names[card.rank],
-        "suit": suit_names[card.suit],
-        "symbol": suit_symbols[card.suit],
-        "short": f"{rank_names[card.rank]}{suit_symbols[card.suit]}",
-        "label": card_label(card_id),
-        "color": "red" if card.suit in {Suit.HEARTS, Suit.DIAMONDS} else "black",
-    }
-
-
-def action_label(action_id: int) -> str:
-    if 0 <= action_id < 52:
-        return f"played {serialize_card(action_id)['short']}"
-    labels = {
-        52: "picked up the live pile",
-        53: "resolved a 9 draw",
-        54: "revealed the draw pile top card",
-        55: "ended the play group",
-        67: "played face-down slot 1",
-        68: "played face-down slot 2",
-        69: "played face-down slot 3",
-    }
-    return labels.get(action_id, f"used action {action_id}")
-
-
-def legal_actions(engine: IBFlipEngine) -> list[int]:
-    return [index for index, is_legal in enumerate(engine.get_legal_actions()) if is_legal]
-
-
-def serialize_slot(slot: list[int]) -> list[dict[str, Any]]:
-    return [serialize_card(card_id) for card_id in slot]
-
-
-def serialize_player(engine: IBFlipEngine, player_index: int, *, reveal_hand: bool) -> dict[str, Any]:
-    player = engine.state.players[player_index]
-    hand = [serialize_card(card_id) for card_id in player.hand] if reveal_hand else []
-    return {
-        "player_index": player_index,
-        "hand": hand,
-        "hand_count": len(player.hand),
-        "face_up_slots": [serialize_slot(slot) for slot in player.face_up_slots],
-        "face_down_count": sum(card is not None for card in player.face_down_slots),
-        "active": player.active,
-        "finish_status": player.finish_status.name if player.finish_status else None,
-    }
-
-
-def serialize_move(
-    engine: IBFlipEngine,
-    *,
-    player_index: int,
-    action_id: int,
-    message: str,
-) -> dict[str, Any]:
-    return {
-        "player_index": player_index,
-        "action_id": action_id,
-        "message": message,
-        "card": serialize_card(action_id) if 0 <= action_id < 52 else None,
-        "live_pile_top": serialize_card(engine.state.live_cards[-1]) if engine.state.live_cards else None,
-        "live_pile_count": len(engine.state.live_cards),
-        "discard_count": len(engine.state.discard_pile),
-        "draw_count": len(engine.state.draw_pile),
-    }
-
-
-def serialize_state(
-    session_id: str,
-    engine: IBFlipEngine,
-    log: list[str] | None = None,
-    moves: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    legal = legal_actions(engine) if engine.state.phase is not Phase.GAME_OVER else []
-    action_mask = [index in set(legal) for index in range(ACTION_SPACE_SIZE)]
-    live_cards = [serialize_card(card_id) for card_id in engine.state.live_cards]
-    return {
-        "session_id": session_id,
-        "phase": engine.state.phase.name,
-        "num_players": len(engine.state.players),
-        "game_over": engine.state.phase is Phase.GAME_OVER,
-        "current_player": engine.state.current_player,
-        "is_human_turn": engine.state.phase is not Phase.GAME_OVER and engine.state.current_player == HUMAN_PLAYER,
-        "direction": engine.state.direction,
-        "pending": engine.state.pending.kind.name if engine.state.pending else None,
-        "winner": engine.state.winner,
-        "loser": engine.state.loser,
-        "human": serialize_player(engine, HUMAN_PLAYER, reveal_hand=True),
-        "human_face_down_slots": [
-            {"slot": index, "action_id": 67 + index, "available": card is not None}
-            for index, card in enumerate(engine.state.players[HUMAN_PLAYER].face_down_slots)
-        ],
-        "opponents": [
-            serialize_player(engine, player_index, reveal_hand=False)
-            for player_index in range(1, len(engine.state.players))
-        ],
-        "live_pile": live_cards,
-        "live_pile_top": live_cards[-1] if live_cards else None,
-        "discard_count": len(engine.state.discard_pile),
-        "discard_top": (
-            serialize_card(engine.state.discard_pile[-1])
-            if engine.state.discard_pile
-            else None
-        ),
-        "draw_count": len(engine.state.draw_pile),
-        "legal_actions": legal,
-        "action_mask": action_mask,
-        "log": log or [],
-        "moves": moves or [],
-        "bot_replay_delay_ms": BOT_REPLAY_DELAY_MS,
-    }
-
-
-def run_bots_until_human_turn(engine: IBFlipEngine) -> tuple[list[str], list[dict[str, Any]]]:
-    log: list[str] = []
-    moves: list[dict[str, Any]] = []
-    bot_steps = 0
-    while engine.state.phase is not Phase.GAME_OVER and engine.state.current_player != HUMAN_PLAYER:
-        bot_steps += 1
-        if bot_steps > BOT_STEP_LIMIT:
-            log.append("Bot loop stopped after safety limit.")
-            break
-
-        player_index = engine.state.current_player
-        actions = legal_actions(engine)
-        if not actions:
-            log.append(f"Player {player_index + 1} had no legal actions; bot loop stopped.")
-            break
-        action_id = BOT_RNG.choice(actions)
-        try:
-            engine.step(action_id, validate=False)
-        except IllegalActionError as exc:
-            log.append(f"Player {player_index + 1} attempted illegal action {action_id}: {exc}")
-            break
-        message = f"Player {player_index + 1} {action_label(action_id)}."
-        log.append(message)
-        moves.append(
-            serialize_move(
-                engine,
-                player_index=player_index,
-                action_id=action_id,
-                message=message,
-            )
-        )
-    return log, moves
-
-
-def get_engine(session_id: str) -> IBFlipEngine:
-    engine = ACTIVE_GAMES.get(session_id)
-    if engine is None:
-        raise HTTPException(status_code=404, detail="Unknown session_id")
-    return engine
+class JoinRoom(BaseModel):
+    name: str = Field("Player", max_length=24)
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    return {"status": "ok", "rooms": len(registry.rooms), "model": model_available()}
 
 
-@app.post("/start")
-def start_game(request: StartRequest | None = None) -> dict[str, Any]:
-    num_players = request.num_players if request else 4
-    if num_players < 2 or num_players > 5:
-        raise HTTPException(status_code=400, detail="num_players must be between 2 and 5")
-
-    session_id = str(uuid4())
-    engine = IBFlipEngine(num_players=num_players)
-    engine.reset()
-    engine.auto_fix_hands_randomly()
-    ACTIVE_GAMES[session_id] = engine
-    log = [f"Started a new {num_players}-player game."]
-    bot_log, moves = run_bots_until_human_turn(engine)
-    log.extend(bot_log)
-    return serialize_state(session_id, engine, log, moves)
-
-
-@app.get("/state/{session_id}")
-def get_state(session_id: str) -> dict[str, Any]:
-    return serialize_state(session_id, get_engine(session_id))
+@app.post("/api/rooms")
+async def create_room(body: CreateRoom) -> dict[str, Any]:
+    if len(body.bots) > MAX_SEATS - 1:
+        raise HTTPException(400, "Too many bots")
+    room = registry.create()
+    seat, token = room.add_human(body.name.strip() or "Player")
+    for level in body.bots:
+        room.add_bot(level if level in BOT_LEVELS else "medium")
+    if body.autostart:
+        if len(room.seats) < 2:
+            raise HTTPException(400, "Need at least one bot to autostart")
+        room.start()
+    registry.ensure_runner(room)
+    return {"code": room.code, "token": token, "seat": seat}
 
 
-@app.post("/play/{session_id}")
-def play(session_id: str, request: PlayRequest) -> dict[str, Any]:
-    engine = get_engine(session_id)
-    log: list[str] = []
+@app.post("/api/rooms/{code}/join")
+async def join_room(code: str, body: JoinRoom) -> dict[str, Any]:
+    room = registry.get(code)
+    if room is None:
+        raise HTTPException(404, "No room with that code")
+    async with room.lock:
+        try:
+            seat, token = room.add_human(body.name.strip() or "Player")
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        await room.broadcast()
+    registry.ensure_runner(room)
+    return {"code": room.code, "token": token, "seat": seat}
 
-    if engine.state.phase is Phase.GAME_OVER:
-        return serialize_state(session_id, engine, ["Game is already over."])
-    if engine.state.current_player != HUMAN_PLAYER:
-        log.append("It was not the human turn; bots advanced first.")
-        bot_log, moves = run_bots_until_human_turn(engine)
-        log.extend(bot_log)
-        return serialize_state(session_id, engine, log, moves)
 
-    action_id = request.action_id
-    actions = legal_actions(engine)
-    if action_id not in actions:
-        raise HTTPException(status_code=400, detail={"message": "Illegal action", "legal_actions": actions})
+@app.get("/api/rooms/{code}")
+def room_info(code: str) -> dict[str, Any]:
+    room = registry.get(code)
+    if room is None:
+        raise HTTPException(404, "No room with that code")
+    return room.lobby_view()
 
+
+@app.websocket("/ws/{code}")
+async def room_socket(websocket: WebSocket, code: str, token: str = "") -> None:
+    room = registry.get(code)
+    await websocket.accept()
+    if room is None:
+        await websocket.send_json({"type": "error", "message": "Room not found", "fatal": True})
+        await websocket.close()
+        return
+    seat_index = room.seat_by_token(token)
+    if seat_index is None:
+        await websocket.send_json({"type": "error", "message": "Not a member of this room", "fatal": True})
+        await websocket.close()
+        return
+    registry.ensure_runner(room)
+    room.seats[seat_index].sockets.append(websocket)
+    room.seats[seat_index].last_seen = time.time()
+    async with room.lock:
+        await room.broadcast()
     try:
-        engine.step(action_id, validate=False)
-    except IllegalActionError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        while True:
+            message = await websocket.receive_json()
+            seat_index = room.seat_by_token(token)  # seat index can shift in lobby
+            if seat_index is None:
+                await websocket.send_json({"type": "kicked"})
+                break
+            room.seats[seat_index].last_seen = time.time()
+            await handle_message(room, seat_index, message, websocket)
+    except WebSocketDisconnect:
+        pass
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        index = room.seat_by_token(token)
+        if index is not None and websocket in room.seats[index].sockets:
+            room.seats[index].sockets.remove(websocket)
+            room.seats[index].last_seen = time.time()
+            async with room.lock:
+                await room.broadcast()
+            room.touch()
 
-    message = f"You {action_label(action_id)}."
-    log.append(message)
-    moves = [
-        serialize_move(
-            engine,
-            player_index=HUMAN_PLAYER,
-            action_id=action_id,
-            message=message,
-        )
-    ]
-    bot_log, bot_moves = run_bots_until_human_turn(engine)
-    log.extend(bot_log)
-    moves.extend(bot_moves)
-    return serialize_state(session_id, engine, log, moves)
+
+async def handle_message(room, seat: int, message: dict[str, Any], websocket: WebSocket) -> None:
+    kind = message.get("type")
+    is_host = seat == room.host
+    async with room.lock:
+        try:
+            if kind == "action":
+                room.act(seat, int(message["action"]))
+            elif kind == "fix":
+                room.fix(seat, str(message.get("op")), message.get("card"), message.get("slot"))
+            elif kind == "add_bot" and is_host:
+                room.add_bot(str(message.get("level", "medium")))
+            elif kind == "set_bot" and is_host:
+                target = int(message["seat"])
+                level = str(message.get("level"))
+                if room.seats[target].kind == "bot" and level in BOT_LEVELS:
+                    room.seats[target].level = level
+            elif kind == "remove" and is_host:
+                room.remove_seat(int(message["seat"]))
+            elif kind in ("start", "rematch") and is_host:
+                if room.status in ("lobby", "over"):
+                    room.start()
+            elif kind == "lobby" and is_host:
+                if room.status == "over":
+                    room.status = "lobby"
+                    room.engine = None
+            elif kind == "speed" and is_host:
+                room.bot_delay = min(2.0, max(0.2, float(message.get("delay", 0.9))))
+            elif kind in ("chat", "emote"):
+                text = str(message.get("text", ""))[:140] if kind == "chat" else str(message.get("emoji", ""))
+                if kind == "emote" and text not in ALLOWED_EMOTES:
+                    return
+                if text.strip():
+                    note = {"type": kind, "seat": seat, "text": text, "ts": time.time()}
+                    for s in room.seats:
+                        for ws in list(s.sockets):
+                            await _safe_send(ws, note)
+                return
+            elif kind == "ping":
+                await _safe_send(websocket, {"type": "pong"})
+                return
+            else:
+                return
+        except (IllegalActionError, ValueError, KeyError, TypeError, IndexError) as exc:
+            await _safe_send(websocket, {"type": "error", "message": str(exc) or "Not allowed"})
+            return
+        await room.broadcast(room.drain_events())
+    room.touch()
+
+
+# Serve the static front-end too (handy locally and as a single deploy).
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/")
+    def index() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/{asset}")
+    def asset(asset: str) -> FileResponse:
+        path = (STATIC_DIR / asset).resolve()
+        if path.parent != STATIC_DIR.resolve() or not path.is_file():
+            raise HTTPException(404)
+        return FileResponse(path)
