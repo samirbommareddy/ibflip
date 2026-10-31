@@ -357,6 +357,12 @@ const SEAT_POS = {
   3: [[9, 46], [50, 15], [91, 46]],
   4: [[9, 52], [31, 15], [69, 15], [91, 52]],
 };
+const SEAT_POS_NARROW = {
+  1: [[50, 15]],
+  2: [[27, 15], [73, 15]],
+  3: [[19, 35], [50, 12], [81, 35]],
+  4: [[19, 35], [30, 11], [70, 11], [81, 35]],
+};
 function relIndex(i) { const n = S.game.players.length; return (i - S.seat + n) % n; }
 
 function renderGame() {
@@ -370,7 +376,8 @@ function renderGame() {
   // ---- opponents
   const seats = $("#seats");
   seats.innerHTML = "";
-  const pos = SEAT_POS[n - 1] || SEAT_POS[4];
+  const table = innerWidth < 760 ? SEAT_POS_NARROW : SEAT_POS;
+  const pos = table[n - 1] || table[4];
   for (let i = 0; i < n; i++) {
     if (i === S.seat) continue;
     const p = g.players[i], s = r.seats[i] || {};

@@ -356,13 +356,19 @@ body::before {
   transition: background .3s, color .3s;
 }
 .prompt.yours { background: linear-gradient(180deg, #ffd56b, #e9a93a); color: var(--accent-ink); box-shadow: 0 6px 22px rgba(233,169,58,.35); animation: popIn .3s ease both; }
-.me-row { display: flex; align-items: flex-end; gap: 1.2rem; justify-content: center; width: 100%; }
-.me-badge { display: flex; align-items: center; gap: .5rem; min-width: 120px; justify-content: flex-end; }
-.me-badge .avatar { width: 40px; height: 40px; }
+.me-main {
+  display: grid; width: 100%; max-width: 1400px;
+  grid-template-columns: minmax(150px, auto) 1fr minmax(150px, auto);
+  grid-template-areas: "left hand actions";
+  align-items: end; gap: 1rem;
+}
+.me-left { grid-area: left; display: flex; flex-direction: column; align-items: center; gap: .35rem; }
+.me-badge { display: flex; align-items: center; gap: .5rem; }
+.me-badge .avatar { width: 34px; height: 34px; font-size: 1.15rem; }
 .me.turn .me-badge .avatar { box-shadow: 0 0 0 3px var(--accent), 0 0 22px rgba(242,193,78,.6); }
-.my-slots .slot { --table-card-w: clamp(44px, 4.6vw, 66px); }
-.action-bar { display: flex; gap: .5rem; min-width: 120px; flex-wrap: wrap; }
-.action-bar .btn { animation: popIn .25s ease both; }
+.my-slots .slot { --table-card-w: clamp(44px, min(4.4vw, 7.5vh), 66px); }
+.action-bar { grid-area: actions; display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; align-self: center; }
+.hand { grid-area: hand; }
 .hand {
   position: relative; display: flex; justify-content: center; align-items: flex-end;
   height: calc(var(--card-h) + 14px); width: 100%;
@@ -510,11 +516,13 @@ body::before {
   .table::after, .felt-ring { border-radius: 38% / 26%; }
   .table-wrap { padding: 0 2vw; }
   .me-badge { display: none; }
-  .action-bar { min-width: 0; }
+  .me-main { grid-template-columns: auto 1fr; grid-template-areas: "left actions" "hand hand"; gap: .3rem .6rem; }
+  .action-bar { flex-direction: row; flex-wrap: wrap; align-items: center; }
   .seat-name { max-width: 6em; font-size: .75rem; }
   .seat-head .avatar { width: 26px; height: 26px; font-size: .9rem; }
   .known { display: none; }
-  .emote-bar { flex-direction: row; right: 50%; bottom: auto; top: 54px; transform: translateX(50%); }
+  .emote-bar { right: 2px; bottom: 36%; transform: none; padding: 3px; gap: 1px; }
+  .center, .callout { top: 60%; }
   .emote-bar button { width: 28px; height: 28px; font-size: 1rem; }
   .hud-room { display: none; }
   .toast-stack { left: 50%; transform: translateX(-50%); top: 96px; bottom: auto; flex-direction: column; max-width: 92vw; }
