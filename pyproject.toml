@@ -9,6 +9,7 @@ dependencies = [
     "numpy>=2.4.4",
     "pettingzoo>=1.26.1",
     "uvicorn>=0.46.0",
+    "websockets>=17.4",
 ]
 
 [build-system]

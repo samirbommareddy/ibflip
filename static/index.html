@@ -2,75 +2,195 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0d3b2a" />
+    <meta name="ibflip-api" content="https://ibflip.onrender.com" />
     <title>IB-Flip</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='18' y='8' width='64' height='84' rx='10' fill='%23fffdf6' stroke='%23c9a24b' stroke-width='5'/><text x='50' y='66' font-size='46' text-anchor='middle' fill='%23c0392b'>♥</text></svg>" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <header class="topbar">
-        <div>
-          <h1>IB-Flip</h1>
-          <p id="status">No game started</p>
+    <!-- ============================== HOME ============================== -->
+    <section id="home" class="screen active" aria-label="Home">
+      <div class="home-inner">
+        <div class="hero-cards" aria-hidden="true">
+          <div class="card hero-card" data-hero="0"></div>
+          <div class="card hero-card" data-hero="1"></div>
+          <div class="card hero-card" data-hero="2"></div>
+          <div class="card hero-card" data-hero="3"></div>
+          <div class="card hero-card" data-hero="4"></div>
         </div>
-        <div class="top-controls">
-          <label for="playerCount">Players</label>
-          <select id="playerCount" aria-label="Total players">
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4" selected>4</option>
-            <option value="5">5</option>
-          </select>
-          <span id="turnBadge" class="turn-badge">Not Started</span>
-          <button id="startButton" type="button">New Game</button>
+        <h1 class="logo">IB<span>·</span>Flip</h1>
+        <p class="tagline">The card game of flips, skips and sudden reversals.</p>
+
+        <div class="panel home-panel">
+          <label class="field">
+            <span>Your name</span>
+            <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="e.g. Sam" />
+          </label>
+
+          <div class="mode-tabs" role="tablist">
+            <button class="tab active" data-tab="bots" role="tab">Play vs bots</button>
+            <button class="tab" data-tab="friends" role="tab">Play with friends</button>
+          </div>
+
+          <div class="tab-body" data-body="bots">
+            <div class="row">
+              <span class="row-label">Opponents</span>
+              <div class="seg" id="botCount">
+                <button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="on">3</button><button data-v="4">4</button>
+              </div>
+            </div>
+            <div class="row">
+              <span class="row-label">Difficulty</span>
+              <div class="seg" id="botLevel">
+                <button data-v="easy">Rookie</button><button data-v="medium">Regular</button><button data-v="hard" class="on">Shark <small>AI</small></button>
+              </div>
+            </div>
+            <button id="quickPlay" class="btn primary big">Deal me in</button>
+          </div>
+
+          <div class="tab-body hidden" data-body="friends">
+            <button id="createRoom" class="btn primary big">Create a room</button>
+            <div class="or"><span>or join one</span></div>
+            <div class="join-row">
+              <input id="codeInput" maxlength="4" placeholder="CODE" autocapitalize="characters" spellcheck="false" />
+              <button id="joinRoom" class="btn">Join</button>
+            </div>
+          </div>
+          <p id="homeError" class="error" role="alert"></p>
+        </div>
+        <button class="link-btn" data-open="rules">How to play</button>
+        <p id="serverNote" class="server-note"></p>
+      </div>
+    </section>
+
+    <!-- ============================== LOBBY ============================= -->
+    <section id="lobby" class="screen" aria-label="Lobby">
+      <div class="lobby-inner panel">
+        <button class="icon-btn back" id="leaveLobby" title="Leave">←</button>
+        <p class="eyebrow">Room code</p>
+        <div class="room-code" id="roomCode">----</div>
+        <button class="btn ghost" id="copyLink">Copy invite link</button>
+        <p class="muted small" id="lobbyHint">Share the code — friends join from the home screen.</p>
+        <ul class="seat-list" id="seatList"></ul>
+        <div class="host-controls" id="hostControls">
+          <div class="add-bot">
+            <span>Add bot</span>
+            <button class="btn small" data-addbot="easy">Rookie</button>
+            <button class="btn small" data-addbot="medium">Regular</button>
+            <button class="btn small" data-addbot="hard">Shark</button>
+          </div>
+          <button class="btn primary big" id="startGame">Start game</button>
+        </div>
+        <p class="muted" id="waitHost">Waiting for the host to start…</p>
+      </div>
+    </section>
+
+    <!-- ============================== TABLE ============================= -->
+    <section id="game" class="screen" aria-label="Game table">
+      <header class="hud">
+        <button class="icon-btn" id="menuBtn" title="Menu">☰</button>
+        <div class="hud-room"><span class="muted">Room</span> <b id="hudCode">----</b></div>
+        <div class="hud-status" id="hudStatus"></div>
+        <div class="hud-right">
+          <button class="icon-btn" id="soundBtn" title="Sound">🔊</button>
+          <button class="icon-btn" data-open="rules" title="Rules">?</button>
         </div>
       </header>
 
-      <section class="table">
-        <section class="opponents" id="opponents"></section>
+      <div class="table-wrap">
+        <div class="table" id="table">
+          <div class="felt-ring" id="dirRing" aria-hidden="true"><span>➜</span><span>➜</span><span>➜</span><span>➜</span></div>
+          <div class="seats" id="seats"></div>
 
-        <section class="center">
-          <div class="pile live-zone">
-            <h2>Live Pile</h2>
-            <span id="liveCountBadge" class="pile-badge">0</span>
-            <div id="liveTop" class="large-card muted">Empty</div>
-            <p id="liveMeta"></p>
+          <div class="center" id="center">
+            <div class="pile-col">
+              <div class="pile draw-pile" id="drawPile" title="Draw pile"></div>
+              <span class="pile-label" id="drawLabel">Deck</span>
+            </div>
+            <div class="pile-col live-col">
+              <div class="pile live-pile" id="livePile"></div>
+              <span class="pile-label" id="liveLabel">Live</span>
+            </div>
+            <div class="pile-col">
+              <div class="pile discard-pile" id="discardPile" title="Discard pile"></div>
+              <span class="pile-label" id="discardLabel">Discard</span>
+            </div>
           </div>
-          <div class="move-strip" id="moveBanner">Start a new game</div>
-          <div class="pile discard-zone">
-            <h2>Discard</h2>
-            <span id="discardCountBadge" class="pile-badge">0</span>
-            <div id="discardTop" class="large-card muted">Empty</div>
-            <p id="discardMeta"></p>
-          </div>
-          <div class="log">
-            <h2>Recent Moves</h2>
-            <ol id="gameLog"></ol>
-          </div>
-        </section>
+          <div class="callout" id="callout"></div>
+        </div>
+      </div>
 
-        <section class="human" data-player-index="0">
-          <div class="zone">
-            <h2>Human Hand <span id="handCount" class="zone-count">0</span></h2>
-            <div id="hand" class="cards"></div>
-          </div>
-          <div class="zone">
-            <h2>Face-Up Cards <span id="faceUpCount" class="zone-count">0</span></h2>
-            <div id="faceUp" class="slots"></div>
-          </div>
-          <div class="zone">
-            <h2>Face-Down Cards <span id="faceDownCount" class="zone-count">0</span></h2>
-            <div id="faceDown" class="cards"></div>
-          </div>
-          <div class="zone">
-            <h2>Other Actions <span id="actionCount" class="zone-count">0</span></h2>
-            <div id="specialActions" class="cards"></div>
-          </div>
-        </section>
-      </section>
-      <div id="animationLayer" class="animation-layer" aria-hidden="true"></div>
-    </main>
+      <div class="me" id="me">
+        <div class="prompt" id="prompt"></div>
+        <div class="me-row">
+          <div class="me-badge" id="meBadge"></div>
+          <div class="my-slots slots" id="mySlots"></div>
+          <div class="action-bar" id="actionBar"></div>
+        </div>
+        <div class="hand" id="hand"></div>
+      </div>
 
+      <div class="emote-bar" id="emoteBar"></div>
+      <div class="toast-stack" id="toasts" aria-live="polite"></div>
+    </section>
+
+    <!-- ============================ OVERLAYS ============================ -->
+    <div class="overlay hidden" id="resultOverlay">
+      <div class="panel result-panel">
+        <div class="result-emoji" id="resultEmoji">🏆</div>
+        <h2 id="resultTitle">You win!</h2>
+        <p id="resultText" class="muted"></p>
+        <div class="reveal" id="revealHands"></div>
+        <div class="scoreboard" id="scoreboard"></div>
+        <div class="result-actions">
+          <button class="btn primary" id="rematchBtn">Play again</button>
+          <button class="btn ghost" id="toLobbyBtn">Lobby</button>
+          <button class="btn ghost" id="homeBtn">Home</button>
+        </div>
+        <p class="muted small" id="rematchWait"></p>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="menuOverlay">
+      <div class="panel menu-panel">
+        <h3>Menu</h3>
+        <label class="row"><span>Bot speed</span>
+          <input type="range" id="speedRange" min="0.25" max="1.6" step="0.05" value="0.9" />
+        </label>
+        <button class="btn" id="copyLink2">Copy invite link</button>
+        <button class="btn ghost" id="leaveGame">Leave table</button>
+        <button class="btn ghost" data-close>Close</button>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="rules">
+      <div class="panel rules-panel">
+        <button class="icon-btn close" data-close>✕</button>
+        <h2>How to play IB-Flip</h2>
+        <p class="lead">Get rid of all your cards — hand, then face-up, then face-down — and finish <em>legally</em>.</p>
+        <ol class="flow">
+          <li><b>Deal.</b> Everyone gets 3 face-down, 3 face-up on top, and a 3-card hand.</li>
+          <li><b>Fix your hand.</b> Swap hand cards with your face-up cards, or stack matching ranks.</li>
+          <li><b>Lowest card starts</b> (3 is lowest; then 6, 8, 9, J, Q, K, A, 7, 2, 10, 4, 5).</li>
+          <li><b>Play</b> one or more cards of the same rank onto the live pile. Draw back to 3 while the deck lasts. Stuck? Flip the top of the deck and hope.</li>
+          <li><b>Deck empty:</b> can't play → pick up the live pile. Hand empty → play your face-up cards, then face-down cards blind.</li>
+          <li><b>First to finish legally wins.</b> Finishing in a way that gives you another turn (on a 2, a 10, a flip, an 8 heads-up…) means you <em>lose</em>.</li>
+        </ol>
+        <h3>Card powers</h3>
+        <div class="powers" id="powers"></div>
+        <h3>Flips</h3>
+        <p>A <b>10</b> or <b>four of a kind in a row</b> flips the live pile to the discard and the flipper goes again. Special flips:
+          <b>3s</b> → deal one 3 to each other player · <b>4s</b> → take a 3 from the discard, next player's turn · <b>8s</b> → the flipper <em>loses</em> ·
+          <b>9s</b> → the discard pile becomes the new live pile.</p>
+        <h3>What can go on what</h3>
+        <div class="matrix-wrap"><table class="matrix" id="matrix"></table></div>
+      </div>
+    </div>
+
+    <div id="fx" class="fx" aria-hidden="true"></div>
+    <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
     <script src="./app.js"></script>
   </body>
 </html>
