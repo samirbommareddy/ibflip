@@ -914,6 +914,12 @@ function wire() {
   }));
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") $$(".overlay:not(#resultOverlay)").forEach((o) => o.classList.add("hidden"));
+    if (!$("#game").classList.contains("active") || e.target.closest("input, select, textarea")) return;
+    if ($$(".overlay:not(.hidden)").length) return;
+    const playable = $$("#hand .card.legal, #mySlots .card.legal");
+    if (/^[1-9]$/.test(e.key) && playable[Number(e.key) - 1]) { e.preventDefault(); playable[Number(e.key) - 1].click(); }
+    else if (e.key === " " || e.key === "Enter") { const b = $("#actionBar .btn"); if (b) { e.preventDefault(); b.click(); } }
+    else if (e.key === "h" || e.key === "H") { if (!$("#hintBtn").disabled) send({ type: "hint" }); }
   });
   $("#leaveLobby").addEventListener("click", leaveRoom);
   $("#copyLink").addEventListener("click", copyInvite);
