@@ -44,17 +44,32 @@ uv run python scripts/stress_test.py --games 20000   # random-play fuzzing
 ## How the AI works
 
 IB-Flip is a multiplayer game of imperfect information: you can't see the deck,
-opponents' hands or even your own face-down cards. The Shark bot combines:
+opponents' hands or even your own face-down cards. Shark is a policy network
+trained purely by self-play (PPO):
 
-1. **A policy network trained by self-play (PPO).** One shared policy plays
-   every seat in 2–5 player games; a league of frozen past snapshots and the
-   heuristic bot fill some seats so it doesn't overfit to itself. The actor
-   sees only what a player legitimately knows (incl. cards seen being picked
-   up); the critic additionally sees hidden cards during training
-   (asymmetric actor-critic), which reduces variance.
-2. **Search at decision time.** For each candidate move, sample hidden cards
-   consistent with everything public, play the game out, and pick the move
-   with the best average outcome.
+- One shared policy plays every seat in 2–5 player games; a league of frozen
+  past snapshots and the heuristic bot fills some seats so it doesn't overfit
+  to itself.
+- The actor sees only what a player legitimately knows, including card
+  counting and cards everyone saw going into an opponent's hand. The critic
+  additionally sees the hidden cards during training (asymmetric
+  actor-critic), which reduces variance.
+- A game that hits the step cap counts as a loss for everyone, so the policy
+  never learns to stall.
+- At runtime it's a ~1 MB numpy MLP (no torch), with a guard that varies its
+  play if the game stops making progress.
+
+`src/ibflip/ai/search.py` holds an experimental determinized search; with cheap
+playouts it played worse than the policy alone, so Shark doesn't use it.
+
+Benchmark (`scripts/evaluate.py`, 400 games each, win rate vs fair share):
+
+| Players | Shark alone vs heuristic bots | Shark alone vs random bots | Heuristic bot alone vs Sharks |
+|---|---|---|---|
+| 2 | 70% (50%) | 82% | 7% |
+| 3 | 39% (33%) | 75% | 12% |
+| 4 | 28.5% (25%) | 54% | 16% |
+| 5 | 18% (20%) | 32% | 14.5% |
 
 Train (needs torch; not a runtime dependency):
 
