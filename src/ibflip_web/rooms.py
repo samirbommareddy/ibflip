@@ -210,6 +210,13 @@ class Room:
         self._check_over()
         self.touch()
 
+    def hint(self, seat: int) -> int | None:
+        """What would the strongest available bot play here?"""
+        engine = self._require_engine()
+        if self.status != "playing" or engine.state.current_player != seat or is_forced(engine):
+            return None
+        return make_agent("hard").choose(engine)
+
     def _check_over(self) -> None:
         engine = self._require_engine()
         if engine.state.phase is Phase.GAME_OVER and self.status != "over":

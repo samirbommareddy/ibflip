@@ -94,3 +94,19 @@ def test_absent_player_is_auto_readied_during_fixing(monkeypatch):
             ws.send_json({"type": "fix", "op": "done"})
             state = _drain_until(ws, lambda m: m["type"] == "state" and m.get("game", {}).get("status") == "playing")
             assert all(p["ready"] for p in state["game"]["players"])
+
+
+def test_hint_returns_a_legal_action_on_your_turn():
+    with TestClient(app) as client:
+        created = client.post("/api/rooms", json={"name": "Me", "bots": ["easy"], "autostart": True}).json()
+        room = registry.get(created["code"])
+        room.bot_delay = 0.0
+        with client.websocket_connect(f"/ws/{created['code']}?token={created['token']}") as ws:
+            _drain_until(ws, lambda m: m["type"] == "state" and "game" in m)
+            ws.send_json({"type": "fix", "op": "done"})
+            state = _drain_until(ws, lambda m: m["type"] == "state" and m.get("game", {}).get("legal", {}).get("cards"), limit=2000)
+            ws.send_json({"type": "hint"})
+            hint = _drain_until(ws, lambda m: m["type"] == "hint")
+            legal = state["game"]["legal"]
+            options = set(legal["cards"]) | ({52} if legal["pick_up"] else set()) | ({54} if legal["reveal"] else set()) | ({55} if legal["end_group"] else set())
+            assert hint["action"] in options

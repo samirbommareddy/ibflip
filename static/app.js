@@ -235,6 +235,7 @@ function connect() {
       if (msg.fatal) { localStorage.removeItem(`ibflip:room:${S.code}`); leaveRoom(); $("#homeError").textContent = msg.message; }
       else { toast(`<b>Hmm.</b> ${esc(msg.message)}`, "bad"); S.pendingAction = false; renderGame(); }
     } else if (msg.type === "emote" || msg.type === "chat") bubble(msg.seat, msg.text, msg.type === "chat");
+    else if (msg.type === "hint") showHint(msg.action);
     else if (msg.type === "kicked") { leaveRoom(); $("#homeError").textContent = "You were removed from the room."; }
   };
   ws.onclose = () => {
@@ -504,6 +505,7 @@ function renderStatus() {
   prompt.innerHTML = text;
   prompt.classList.toggle("yours", yours);
   $("#me").classList.toggle("turn", g.current === S.seat && g.status === "playing");
+  $("#hintBtn").disabled = !(g.current === S.seat && g.status === "playing" && !g.nine_draw);
 }
 
 function renderMe() {
@@ -805,6 +807,21 @@ async function animateEvents(events, prev, next) {
   } else if (S.autoGroup && next.group_rank !== S.autoGroup.rank) S.autoGroup = null;
 }
 
+// ================================================================== hints
+function showHint(action) {
+  if (action === null || action === undefined) return;
+  let el = null, text = "";
+  if (action < 52) {
+    el = $(`#hand .card[data-card="${action}"]`) || $(`#mySlots .card[data-card="${action}"]`);
+    text = `Shark would play <b>${short(action)}</b>`;
+  } else if (action === A_PICKUP) { el = $$("#actionBar .btn").find((b) => b.textContent.includes("Pick up")); text = "Shark would <b>pick up</b>"; }
+  else if (action === A_REVEAL) { el = $$("#actionBar .btn").find((b) => b.textContent.includes("Flip")); text = "Shark would <b>flip the deck top</b>"; }
+  else if (action === A_END) { el = $$("#actionBar .btn").find((b) => b.textContent.includes("Done")); text = "Shark would <b>stop here</b>"; }
+  else if (action >= A_FACEDOWN) { el = $(`#mySlots .card.down[data-down="${action - A_FACEDOWN}"]`); text = "Shark would flip <b>this face-down card</b>"; }
+  toast(`💡 ${text}`);
+  if (el) { el.classList.remove("hint-glow"); void el.offsetWidth; el.classList.add("hint-glow"); }
+}
+
 // =============================================================== results
 function showResult() {
   const g = S.game, r = S.room;
@@ -912,6 +929,7 @@ function wire() {
     $("#menuOverlay").classList.remove("hidden");
   });
   $("#speedRange").addEventListener("change", (e) => send({ type: "speed", delay: Number(e.target.value) }));
+  $("#hintBtn").addEventListener("click", () => send({ type: "hint" }));
   const soundBtn = $("#soundBtn");
   const syncSound = () => (soundBtn.textContent = S.sound ? "🔊" : "🔇");
   syncSound();

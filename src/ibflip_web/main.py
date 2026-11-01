@@ -178,6 +178,10 @@ async def handle_message(room, seat: int, message: dict[str, Any], websocket: We
                         for ws in list(s.sockets):
                             await _safe_send(ws, note)
                 return
+            elif kind == "hint":
+                action = room.hint(seat)
+                await _safe_send(websocket, {"type": "hint", "action": action})
+                return
             elif kind == "ping":
                 await _safe_send(websocket, {"type": "pong"})
                 return
