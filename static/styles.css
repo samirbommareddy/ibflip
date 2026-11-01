@@ -20,11 +20,11 @@
   --accent-ink: #2b1d00;
   --danger: #ff6b5b;
   --ok: #57d68d;
-  --card-w: clamp(54px, min(6.2vw, 10.5vh), 88px);
+  --card-w: clamp(54px, min(6.2vw, 9.5vh), 124px);
   --card-h: calc(var(--card-w) * 1.4);
-  --table-card-w: clamp(40px, 4.2vw, 62px);
-  --opp-card-w: clamp(28px, 3vw, 44px);
-  --pile-card-w: clamp(56px, 6vw, 88px);
+  --table-card-w: clamp(40px, min(4.2vw, 7vh), 84px);
+  --opp-card-w: clamp(28px, min(3vw, 5.2vh), 60px);
+  --pile-card-w: clamp(56px, min(6vw, 10vh), 124px);
   --radius: 14px;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -171,7 +171,7 @@ body::before {
 /* ------------------------------------------------------------------ lobby */
 #lobby { align-items: center; justify-content: center; }
 .lobby-inner { position: relative; width: min(480px, 94vw); padding: 2rem 1.5rem 1.5rem; display: flex; flex-direction: column; align-items: center; gap: .6rem; }
-.back { position: absolute; left: 14px; top: 14px; }
+.icon-btn.back { position: absolute; left: 14px; top: 14px; }
 .eyebrow { text-transform: uppercase; letter-spacing: .2em; font-size: .75rem; color: var(--muted); margin: 0; }
 .room-code { font-family: var(--serif); font-size: 3.4rem; letter-spacing: .25em; padding-left: .25em; color: var(--gold); text-shadow: 0 6px 24px rgba(216,180,92,.25); }
 .seat-list { list-style: none; padding: 0; margin: .6rem 0; width: 100%; display: flex; flex-direction: column; gap: .45rem; }
@@ -398,7 +398,7 @@ body::before {
   padding: .3rem 1rem; border-radius: 999px; margin: -0.6rem 0 .25rem;
   transition: background .3s, color .3s;
 }
-.prompt { position: relative; z-index: 1; max-width: min(640px, 94vw); }
+.prompt { position: relative; z-index: 1; max-width: min(820px, 94vw); }
 .prompt.yours { background: linear-gradient(180deg, #ffd56b, #e9a93a); color: var(--accent-ink); box-shadow: 0 6px 22px rgba(233,169,58,.35); }
 .me-main {
   display: grid; width: 100%; max-width: 1400px;
@@ -410,7 +410,7 @@ body::before {
 .me-badge { display: flex; align-items: center; gap: .5rem; }
 .me-badge .avatar { width: 34px; height: 34px; font-size: 1.15rem; }
 .me.turn .me-badge .avatar { box-shadow: 0 0 0 3px var(--accent), 0 0 22px rgba(242,193,78,.6); }
-.my-slots .slot { --table-card-w: clamp(44px, min(4.4vw, 7.5vh), 66px); }
+.my-slots .slot { --table-card-w: clamp(44px, min(4.4vw, 7.5vh), 92px); }
 .action-bar { grid-area: actions; display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; align-self: center; }
 .hand { grid-area: hand; }
 .hand {
@@ -574,10 +574,10 @@ body::before {
     --opp-card-w: clamp(22px, 5.6vw, 32px);
     --pile-card-w: clamp(46px, 12vw, 64px);
   }
-  .table { --table-ar: .7; border-radius: 42% / 28%; }
+  .table { --table-ar: .62; border-radius: 44% / 26%; }
   .table::after, .felt-ring { border-radius: 42% / 28%; inset: 5% 6%; }
   .table-wrap { padding: 16px 14px 8px; }
-  .narration { font-size: .78rem; max-width: 94%; top: calc(60% + var(--pile-card-w) * .7 + 2rem); }
+  .narration { font-size: .78rem; max-width: 94%; top: calc(65% + var(--pile-card-w) * .7 + 2rem); }
   .opp-row { gap: 6px; }
   .me-badge { display: none; }
   .me-main { grid-template-columns: auto 1fr; grid-template-areas: "left actions" "hand hand"; gap: .3rem .6rem; }
@@ -585,7 +585,8 @@ body::before {
   .seat-name { max-width: 6em; font-size: .75rem; }
   .seat-head .avatar { width: 26px; height: 26px; font-size: .9rem; }
   .known { display: none; }
-  .center, .callout { top: 60%; }
+  .center, .callout { top: 65%; }
+  .table::before { top: 91%; }
   .emote-bar { right: 8px; }
   .emote-bar button { width: 32px; height: 32px; font-size: 1.05rem; }
   .hud { gap: .5rem; }
@@ -647,3 +648,6 @@ body::before {
 .reveal-row.is-me .name { color: #fff6dc; }
 .reveal-row .why { font-weight: 600; color: var(--danger); font-size: .7rem; }
 @media (max-width: 760px) { .announce { top: 42%; max-width: 92%; white-space: normal; font-size: .85rem; } }
+
+/* Large displays: scale the UI text with the table */
+@media (min-width: 2200px) and (min-height: 1200px) { html { font-size: 19px; } .icon-btn { width: 44px; height: 44px; } }

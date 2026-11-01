@@ -37,6 +37,8 @@ const short = (id) => `${rankOf(id)}${suitOf(id)}`;
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Animation pauses: skipped entirely while catching up (see pump()).
+const nap = (ms) => (S.fast ? Promise.resolve() : sleep(ms));
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 // ---------------------------------------------------------------- API base
@@ -51,12 +53,30 @@ const API = (() => {
 })();
 const WS_BASE = API.replace(/^http/, "ws");
 
+// ------------------------------------------------------------------ storage
+// localStorage can throw (Safari private mode / lockdown / blocked cookies).
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (_) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (_) {} },
+  json(k) { try { return JSON.parse(store.get(k) || "null"); } catch (_) { return null; } },
+  keys() { try { return Object.keys(localStorage); } catch (_) { return []; } },
+};
+const ROOM_KEY = (code) => `ibflip:room:${code}`;
+const MAX_SAVED_ROOMS = 4;
+function saveRoom(code, data) {
+  store.set(ROOM_KEY(code), JSON.stringify({ ...data, ts: Date.now() }));
+  const rooms = store.keys().filter((k) => k.startsWith("ibflip:room:"))
+    .map((k) => [k, store.json(k)?.ts || 0]).sort((a, b) => b[1] - a[1]);
+  rooms.slice(MAX_SAVED_ROOMS).forEach(([k]) => store.del(k));
+}
+
 // -------------------------------------------------------------------- state
 const S = {
   code: null, token: null, seat: null, ws: null, room: null, game: null,
-  queue: [], busy: false, selected: null, sound: localStorage.getItem("ibflip:sound") !== "off",
+  queue: [], busy: false, selected: null, sound: store.get("ibflip:sound") !== "off",
   lastGameNo: 0, resultShownFor: null, lastFlipRank: null, reconnectTimer: null, pendingAction: false,
-  liveShown: [], speed: 1, groupSlot: null, dealing: false, autoGroup: null,
+  liveShown: [], speed: 1, groupSlot: null, dealing: false, autoGroup: null, fast: false, catchUp: false,
 };
 
 // ===================================================================== sound
@@ -186,7 +206,7 @@ function finishText(i, p, n) {
 
 // ================================================================== HOME
 function initHome() {
-  const name = localStorage.getItem("ibflip:name") || "";
+  const name = store.get("ibflip:name") || "";
   $("#nameInput").value = name;
   $$(".tab").forEach((t) => t.addEventListener("click", () => {
     $$(".tab").forEach((x) => x.classList.toggle("active", x === t));
@@ -195,10 +215,10 @@ function initHome() {
   $$(".seg").forEach((seg) => seg.addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     $$("button", seg).forEach((x) => x.classList.toggle("on", x === b));
-    localStorage.setItem(`ibflip:${seg.id}`, b.dataset.v);
+    store.set(`ibflip:${seg.id}`, b.dataset.v);
   }));
   for (const id of ["botCount", "botLevel"]) {
-    const v = localStorage.getItem(`ibflip:${id}`);
+    const v = store.get(`ibflip:${id}`);
     if (v) $$(`#${id} button`).forEach((x) => x.classList.toggle("on", x.dataset.v === v));
   }
   // hero cards
@@ -210,12 +230,12 @@ function initHome() {
   $("#createRoom").addEventListener("click", createRoom);
   $("#joinRoom").addEventListener("click", () => joinRoom($("#codeInput").value));
   $("#codeInput").addEventListener("keydown", (e) => e.key === "Enter" && joinRoom(e.target.value));
-  $("#nameInput").addEventListener("change", (e) => localStorage.setItem("ibflip:name", e.target.value.trim()));
+  $("#nameInput").addEventListener("change", (e) => store.set("ibflip:name", e.target.value.trim()));
 }
 const segVal = (id) => $(`#${id} button.on`)?.dataset.v;
 function playerName() {
-  const n = $("#nameInput").value.trim() || localStorage.getItem("ibflip:name") || "";
-  if (n) localStorage.setItem("ibflip:name", n);
+  const n = $("#nameInput").value.trim() || store.get("ibflip:name") || "";
+  if (n) store.set("ibflip:name", n);
   return n || "You";
 }
 const EXPIRED = "That room has expired — the server restarts after it's been idle for a while. Start a new one!";
@@ -244,7 +264,7 @@ async function api(path, body) {
 // show a calm notice with a one-click way back into a game.
 function roomLost() {
   const quick = S.quick;
-  if (S.code) localStorage.removeItem(`ibflip:room:${S.code}`);
+  if (S.code) store.del(`ibflip:room:${S.code}`);
   leaveRoom();
   $("#homeError").textContent = "";
   const n = Number(segVal("botCount") || 3), level = LEVEL_NAME[segVal("botLevel") || "medium"];
@@ -285,13 +305,14 @@ async function joinRoom(code) {
 }
 function enterRoom({ code, token, seat }, quick = false) {
   S.code = code; S.token = token; S.seat = seat; S.quick = quick;
-  localStorage.setItem(`ibflip:room:${code}`, JSON.stringify({ token, seat, quick }));
+  saveRoom(code, { token, seat, quick });
   history.replaceState(null, "", `?room=${code}`);
   connect();
 }
 function leaveRoom() {
   if (S.ws) { S.ws.onclose = null; S.ws.close(); }
   clearTimeout(S.reconnectTimer);
+  reconnects = 0;
   Object.assign(S, { code: null, token: null, seat: null, ws: null, room: null, game: null, queue: [], busy: false, resultShownFor: null, pendingAction: false, autoGroup: null });
   clearInterval(S.pingTimer);
   $("#fx").innerHTML = "";
@@ -308,7 +329,7 @@ function leaveRoom() {
 let reconnects = 0;
 // Delay between bot moves on the server, in seconds (server clamps 0.2–2.0).
 const PACE_DEFAULT = 1.35;
-const pace = () => { const v = Number(localStorage.getItem("ibflip:pace")); return v >= 0.2 && v <= 2 ? v : PACE_DEFAULT; };
+const pace = () => { const v = Number(store.get("ibflip:pace")); return v >= 0.2 && v <= 2 ? v : PACE_DEFAULT; };
 function connect() {
   clearTimeout(S.reconnectTimer);
   const ws = new WebSocket(`${WS_BASE}/ws/${S.code}?token=${encodeURIComponent(S.token)}`);
@@ -318,7 +339,7 @@ function connect() {
     if (msg.type === "state") { S.queue.push(msg); pump(); }
     else if (msg.type === "error") {
       if (msg.fatal && /room not found/i.test(msg.message || "")) roomLost();
-      else if (msg.fatal) { localStorage.removeItem(`ibflip:room:${S.code}`); leaveRoom(); $("#homeError").textContent = friendlyError(msg.message); }
+      else if (msg.fatal) { store.del(`ibflip:room:${S.code}`); leaveRoom(); $("#homeError").textContent = friendlyError(msg.message); }
       else { toast(`<b>Hmm.</b> ${esc(msg.message)}`, "bad"); S.pendingAction = false; renderGame(); }
     } else if (msg.type === "emote" || msg.type === "chat") bubble(msg.seat, msg.text, msg.type === "chat");
     else if (msg.type === "hint") showHint(msg.action);
@@ -328,7 +349,8 @@ function connect() {
     if (S.ws !== ws || !S.code) return;
     S.pendingAction = false;
     $("#hudStatus").textContent = "Reconnecting…";
-    S.reconnectTimer = setTimeout(connect, Math.min(8000, 1200 * 2 ** reconnects++));
+    const base = Math.min(10000, 1000 * 2 ** reconnects++);
+    S.reconnectTimer = setTimeout(connect, base / 2 + Math.random() * base / 2);
   };
   ws.onopen = () => {
     clearInterval(S.pingTimer);
@@ -356,12 +378,15 @@ async function pump() {
     while (S.queue.length) {
       const msg = S.queue.shift();
       // Catch up gently if messages pile up; never so fast that moves blur.
-      S.speed = S.queue.length > 3 ? 0.6 : S.queue.length > 1 ? 0.85 : 1;
+      // Hidden tab, a big backlog, or just coming back to the tab: skip
+      // animation and jump through to the latest state.
+      S.fast = document.hidden || S.catchUp || S.queue.length >= 4;
+      S.speed = S.queue.length > 2 ? 0.7 : S.queue.length > 1 ? 0.85 : 1;
       const prev = S.game;
       const inGame = msg.game && prev && $("#game").classList.contains("active") && msg.room.game_no === S.lastGameNo;
       // Background tabs don't run animations (their promises would stall the
       // queue), so just apply state there.
-      if (inGame && msg.events?.length && !document.hidden) {
+      if (inGame && msg.events?.length && !S.fast) {
         S.room = msg.room;
         try { await animateEvents(msg.events, prev, msg.game); } catch (e) { console.error(e); }
       }
@@ -369,7 +394,7 @@ async function pump() {
       try { await apply(msg); } catch (e) { console.error(e); }
       for (const i of finished) await announceFinish(i, msg.game);
     }
-  } finally { S.busy = false; }
+  } finally { S.busy = false; S.catchUp = false; S.fast = false; }
 }
 
 async function apply(msg) {
@@ -391,7 +416,7 @@ async function apply(msg) {
     $("#narration").classList.remove("show");
     S.liveShown = [];
     renderGame();
-    if (!document.hidden) await dealAnimation();
+    if (!S.fast) await dealAnimation();
   } else renderGame();
   if (S.game.current === S.seat && prevCurrent !== S.seat && S.game.status === "playing") {
     Sound.turn();
@@ -414,8 +439,8 @@ function renderLobby() {
     const li = document.createElement("li");
     li.className = "seat-item";
     const sub = s.kind === "bot" ? `Bot · ${LEVEL_NAME[s.level]}` : s.connected ? (i === S.seat ? "You" : "Online") : "Away";
-    li.innerHTML = `<div class="avatar">${s.avatar}<span class="dot ${s.connected ? "" : "off"}"></span></div>
-      <div class="who"><b>${esc(s.name)}${s.host ? " 👑" : ""}</b><small>${sub}</small></div>`;
+    li.innerHTML = `<div class="avatar">${esc(s.avatar ?? "")}<span class="dot ${s.connected ? "" : "off"}"></span></div>
+      <div class="who"><b>${esc(s.name)}${s.host ? " 👑" : ""}</b><small>${esc(sub)}</small></div>`;
     if (host && s.kind === "bot") {
       const sel = document.createElement("select");
       sel.innerHTML = Object.entries(LEVEL_NAME).map(([v, n]) => `<option value="${v}" ${v === s.level ? "selected" : ""}>${n}</option>`).join("");
@@ -460,10 +485,10 @@ const SEAT_POS = {
   4: [[11, 52], [32, 17], [68, 17], [89, 52]],
 };
 const SEAT_POS_NARROW = {
-  1: [[50, 13]],
-  2: [[28, 13], [72, 13]],
-  3: [[22, 33], [50, 11], [78, 33]],
-  4: [[22, 34], [28, 10], [72, 10], [78, 34]],
+  1: [[50, 14]],
+  2: [[28, 14], [72, 14]],
+  3: [[22, 37], [50, 13], [78, 37]],
+  4: [[23, 38], [28, 13], [72, 13], [77, 38]],
 };
 const narrow = () => innerWidth <= 760;
 function relIndex(i) { const n = S.game.players.length; return (i - S.seat + n) % n; }
@@ -511,11 +536,11 @@ function renderSeats() {
     el.classList.toggle("finished", hasPlace(p));
     el.classList.toggle("ready", g.status === "fixing" && p.ready);
     el.classList.toggle("ready-wait", g.status === "fixing" && !p.ready);
-    const sub = s.kind === "bot" ? LEVEL_NAME[s.level] : s.connected ? "" : "away";
-    setHTML($(".seat-head", el), `<div class="avatar">${s.avatar ?? "🙂"}${s.kind === "human" ? `<span class="dot ${s.connected ? "" : "off"}"></span>` : ""}</div>
+    const sub = esc(s.kind === "bot" ? LEVEL_NAME[s.level] ?? "" : s.connected ? "" : "away");
+    setHTML($(".seat-head", el), `<div class="avatar">${esc(s.avatar ?? "🙂")}${s.kind === "human" ? `<span class="dot ${s.connected ? "" : "off"}"></span>` : ""}</div>
         <div class="seat-text"><div class="seat-name">${esc(s.name ?? "Player")}</div><div class="seat-sub">${sub}</div></div>${hasPlace(p) ? `<span class="place-badge ${finishOf(p) === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span>` : ""}`);
     const backs = Math.min(p.hand_count, 6);
-    setHTML($(".opp-hand", el), `${Array.from({ length: backs }, () => cardHTML(null)).join("")}${p.hand_count ? `<span class="hand-count">${p.hand_count}</span>` : ""}`);
+    setHTML($(".opp-hand", el), `${Array.from({ length: backs }, () => cardHTML(null)).join("")}${p.hand_count ? `<span class="hand-count">${Number(p.hand_count)}</span>` : ""}`);
     const known = $(".known", el);
     known.classList.toggle("hidden", !p.known.length);
     setHTML(known, p.known.slice().sort((a, b) => a - b).map((c) => `<span class="chip ${isRed(c) ? "red" : ""}">${short(c)}</span>`).join(""));
@@ -548,12 +573,12 @@ function renderPiles() {
   const draw = $("#drawPile");
   const dn = Math.min(g.draw_count, 5);
   setHTML(draw, Array.from({ length: dn }, (_, i) => cardHTML(null, { extra: `style="translate:${-i * 1.2}px ${-i * 1.2}px"` })).join(""));
-  setHTML($("#drawLabel"), g.draw_count ? `Deck <b>${g.draw_count}</b>` : "Deck empty");
+  setHTML($("#drawLabel"), g.draw_count ? `Deck <b>${Number(g.draw_count)}</b>` : "Deck empty");
   S.liveShown = [...g.live];
   drawLive(g.live);
   const k = Math.min(Math.ceil(g.discard_count / 6), 5);
   setHTML($("#discardPile"), Array.from({ length: k }, (_, i) => cardHTML(null, { extra: `style="translate:${-i * 1.2}px ${-i * 1.2}px; rotate:${i % 2 ? 3 : -2}deg"` })).join(""));
-  setHTML($("#discardLabel"), g.discard_count ? `Discard <b>${g.discard_count}</b>` : "Discard");
+  setHTML($("#discardLabel"), g.discard_count ? `Discard <b>${Number(g.discard_count)}</b>` : "Discard");
   const mine = g.current === S.seat && g.status === "playing" && !S.pendingAction;
   draw.classList.toggle("clickable", mine && !!g.legal?.reveal);
   $("#livePile").classList.toggle("clickable", mine && !!g.legal?.pick_up);
@@ -642,7 +667,7 @@ function renderStatus() {
 
 function renderMe() {
   const g = S.game, me = g.players[S.seat], s = S.room.seats[S.seat] || {};
-  setHTML($("#meBadge"), `<div class="avatar">${s.avatar ?? "🙂"}</div><div><div class="seat-name">${esc(s.name ?? "You")}</div><div class="seat-sub">You</div></div>`);
+  setHTML($("#meBadge"), `<div class="avatar">${esc(s.avatar ?? "🙂")}</div><div><div class="seat-name">${esc(s.name ?? "You")}</div><div class="seat-sub">You</div></div>`);
   const mine = g.status === "playing" && g.current === S.seat && !S.pendingAction;
   const fixing = g.status === "fixing" && !me.ready;
   const L = mine ? g.legal || {} : {};
@@ -838,7 +863,7 @@ function findCardEl(i, id) {
 async function fly(fromRect, toRect, id, { dur = 420, faceDown = false, rotateTo = 0, fromRot = 0, hideSource = null, keep = false, arc = 34 } = {}) {
   if (!fromRect || !toRect) return null;
   if (hideSource) hideSource.style.visibility = "hidden";
-  if (REDUCED()) return null;
+  if (REDUCED() || S.fast) return null;
   dur *= S.speed;
   const wrap = document.createElement("div");
   wrap.className = "fly";
@@ -912,10 +937,10 @@ async function dealAnimation() {
     const slotEls = [...slotsEl.children];
     for (let k = 0; k < 3; k++) {
       const slot = slotEls[k];
-      tasks.push(sleep((k * n + i) * step).then(() => fly(from, cardRect(slot, cardWidthIn(slot)), null, { dur: 420, faceDown: true }))
+      tasks.push(nap((k * n + i) * step).then(() => fly(from, cardRect(slot, cardWidthIn(slot)), null, { dur: 420, faceDown: true }))
         .then(() => slot?.classList.add("dealt")));
     }
-    tasks.push(sleep((3 * n + i) * step).then(() => fly(from, cardRect(handEl, cardWidthIn(handEl)), null, { dur: 420, faceDown: true }))
+    tasks.push(nap((3 * n + i) * step).then(() => fly(from, cardRect(handEl, cardWidthIn(handEl)), null, { dur: 420, faceDown: true }))
       .then(() => handEl.classList.add("dealt")));
   });
   Sound.swoosh();
@@ -939,8 +964,7 @@ async function announceFinish(i, g) {
   narrate(finishText(i, p, n), f === "legal" ? "" : "bad");
   if (i === S.seat) (f === "legal" ? Sound.win : Sound.bad)();
   else Sound.turn();
-  if (document.hidden) return;
-  await sleep(g.status === "over" ? 900 : 1700);
+  await nap(g.status === "over" ? 900 : 1700);
 }
 
 // Per-move pacing (ms). Other players' moves get a readable hold after the
@@ -951,7 +975,7 @@ async function animateEvents(events, prev, next) {
     const e = events[idx];
     const who = e.player;
     const me = who === S.seat;
-    const hold = (ms) => sleep((me ? HOLD_ME : ms) * S.speed);
+    const hold = (ms) => nap((me ? HOLD_ME : ms) * S.speed);
     switch (e.kind) {
       case "start":
         narrate(`${nameOf(who)} ${verb(who, "start", "starts")} with <b>${short(e.card)}</b>`);
@@ -975,19 +999,19 @@ async function animateEvents(events, prev, next) {
         Sound.slide();
         for (let k = 0; k < Math.min(e.count, 3); k++) {
           fly(from, to, null, { dur: 340, faceDown: true });
-          await sleep(90 * S.speed);
+          await nap(90 * S.speed);
         }
-        await sleep(260 * S.speed);
+        await nap(260 * S.speed);
         break;
       }
       case "pickup": {
         const to = cardRect(seatAnchor(who, "hand"));
         const from = livePileTargetRect();
         Sound.swoosh();
-        narrate(`${nameOf(who)} ${verb(who, "pick", "picks")} up <b>${e.cards.length}</b> card${e.cards.length === 1 ? "" : "s"}`, me ? "bad" : "");
+        narrate(`${nameOf(who)} ${verb(who, "pick", "picks")} up <b>${Number(e.cards.length)}</b> card${e.cards.length === 1 ? "" : "s"}`, me ? "bad" : "");
         const cards = e.cards.slice(-LIVE_FAN);
         clearLive();
-        await Promise.all(cards.map((c, k) => sleep(k * 60 * S.speed).then(() => fly(from, to, c, { dur: 460, fromRot: rot(c) }))));
+        await Promise.all(cards.map((c, k) => nap(k * 60 * S.speed).then(() => fly(from, to, c, { dur: 460, fromRot: rot(c) }))));
         await hold(HOLD_BOT);
         break;
       }
@@ -1001,11 +1025,11 @@ async function animateEvents(events, prev, next) {
         const from = livePileTargetRect();
         const to = cardRect($("#discardPile"), pileW());
         const cards = S.liveShown.slice(-LIVE_FAN);
-        await sleep(260 * S.speed);
+        await nap(260 * S.speed);
         clearLive();
-        await Promise.all(cards.map((c, k) => sleep(k * 50 * S.speed).then(() => fly(from, to, c, { dur: 500, fromRot: rot(c), rotateTo: 180 + rot(c), faceDown: false }))));
+        await Promise.all(cards.map((c, k) => nap(k * 50 * S.speed).then(() => fly(from, to, c, { dur: 500, fromRot: rot(c), rotateTo: 180 + rot(c), faceDown: false }))));
         if (r === "9" && next.live.length) { S.liveShown = []; drawLive(next.live); }
-        await sleep(380 * S.speed);
+        await nap(380 * S.speed);
         break;
       }
       case "deal_three":
@@ -1013,7 +1037,7 @@ async function animateEvents(events, prev, next) {
         const from = e.kind === "take_three" ? cardRect($("#discardPile"), pileW()) : livePileTargetRect();
         await fly(from, cardRect(seatAnchor(who, "hand")), e.card, { dur: 420 });
         narrate(`${nameOf(who)} ${verb(who, "get", "gets")} <b>${short(e.card)}</b>`);
-        await sleep(200 * S.speed);
+        await nap(200 * S.speed);
         break;
       }
       case "reveal": {
@@ -1028,7 +1052,7 @@ async function animateEvents(events, prev, next) {
         } else {
           narrate(`${nameOf(who)} ${verb(who, "flip", "flips")} <b>${short(e.card)}</b> off the deck — no luck`, me ? "bad" : "");
           const w = await fly(from, livePileTargetRect(), e.card, { dur: 420, keep: true });
-          await sleep(520 * S.speed);
+          await nap(520 * S.speed);
           if (w) await w.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: "forwards" }).finished.catch(() => {});
           w?.remove();
         }
@@ -1049,7 +1073,7 @@ async function animateEvents(events, prev, next) {
           narrate(`${nameOf(who)} ${verb(who, "turn", "turns")} over <b>${short(e.card)}</b> — doesn't fit`, me ? "bad" : "");
           const w = await fly(from, livePileTargetRect(), e.card, { dur: 460, hideSource: hideSrc, keep: true });
           Sound.bad();
-          await sleep(560 * S.speed);
+          await nap(560 * S.speed);
           if (w) await w.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: "forwards" }).finished.catch(() => {});
           w?.remove();
         }
@@ -1061,20 +1085,20 @@ async function animateEvents(events, prev, next) {
         narrate(`The 9 pulls <b>${short(e.card)}</b> from the discard`);
         await fly(cardRect($("#discardPile"), pileW()), livePileTargetRect(), e.card, { dur: 540, rotateTo: rot(e.card) });
         pushLive(e.card);
-        await sleep(300 * S.speed);
+        await nap(300 * S.speed);
         break;
       }
       case "reverse":
         callout("Reverse!");
         $("#dirRing").classList.toggle("ccw", e.direction === -1);
         $("#dirRing").classList.remove("spin"); void $("#dirRing").offsetWidth; $("#dirRing").classList.add("spin");
-        await sleep(520 * S.speed);
+        await nap(520 * S.speed);
         break;
       case "skip": {
         callout(e.count > 1 ? `Skip ×${e.count}` : "Skip!");
         const el = $("#narration");
         if (el && !/skip/i.test(el.textContent)) el.insertAdjacentHTML("beforeend", ` <span class="note">— skip${e.count > 1 ? ` ×${e.count}` : ""}</span>`);
-        await sleep(520 * S.speed);
+        await nap(520 * S.speed);
         break;
       }
       default:
@@ -1155,10 +1179,10 @@ function showResult() {
     const f = finishOf(p);
     const tag = hasPlace(p) ? `<span class="standing ${f === "legal" ? "" : "bad"}">${placeLabel(p, n) === "last" ? "Last" : ordinal(p.place)}</span>` : `<span class="standing none">–</span>`;
     const why = f === "eights" ? "8s" : f === "illegal" ? "illegal" : "";
-    return `<div class="reveal-row ${i === S.seat ? "is-me" : ""}">${placed ? tag : ""}<span class="name">${r.seats[i]?.avatar ?? ""} ${nameOf(i)}${why ? ` <small class="why">${why}</small>` : ""}</span><div class="cards">${
+    return `<div class="reveal-row ${i === S.seat ? "is-me" : ""}">${placed ? tag : ""}<span class="name">${esc(r.seats[i]?.avatar ?? "")} ${nameOf(i)}${why ? ` <small class="why">${why}</small>` : ""}</span><div class="cards">${
       cards.length ? cards.map((c) => cardHTML(c, { tiny: true })).join("") : '<span class="muted small">out</span>'}</div></div>`;
   }).join("");
-  $("#scoreboard").innerHTML = r.seats.map((s, i) => `<span class="score-pill">${s.avatar} ${i === S.seat ? "You" : esc(s.name)} <b>${s.wins}</b></span>`).join("");
+  $("#scoreboard").innerHTML = r.seats.map((s, i) => `<span class="score-pill">${esc(s.avatar ?? "")} ${i === S.seat ? "You" : esc(s.name)} <b>${Number(s.wins) || 0}</b></span>`).join("");
   const host = r.host === S.seat;
   $("#rematchBtn").classList.toggle("hidden", !host);
   $("#toLobbyBtn").classList.toggle("hidden", !host);
@@ -1255,14 +1279,14 @@ function wire() {
   });
   speedRange.addEventListener("change", (e) => {
     const delay = Math.round((2.2 - Number(e.target.value)) * 100) / 100;
-    localStorage.setItem("ibflip:pace", delay);
+    store.set("ibflip:pace", delay);
     send({ type: "speed", delay });
   });
   $("#hintBtn").addEventListener("click", () => send({ type: "hint" }));
   const soundBtn = $("#soundBtn");
   const syncSound = () => (soundBtn.textContent = S.sound ? "🔊" : "🔇");
   syncSound();
-  soundBtn.addEventListener("click", () => { S.sound = !S.sound; localStorage.setItem("ibflip:sound", S.sound ? "on" : "off"); syncSound(); Sound.unlock(); });
+  soundBtn.addEventListener("click", () => { S.sound = !S.sound; store.set("ibflip:sound", S.sound ? "on" : "off"); syncSound(); Sound.unlock(); });
   const emoteBar = $("#emoteBar"), emoteBtn = $("#emoteBtn");
   emoteBar.innerHTML = EMOTES.map((e) => `<button data-emote="${e}" aria-label="Send ${e}">${e}</button>`).join("");
   const setEmotes = (open) => { emoteBar.classList.toggle("open", open); emoteBtn.setAttribute("aria-expanded", String(open)); };
@@ -1272,6 +1296,14 @@ function wire() {
   $("#lostDismiss").addEventListener("click", hideLost);
   wireTable();
   let resizeRaf = 0;
+  // Tab hidden → finish in-flight animations so the queue never stalls;
+  // coming back → jump straight to the latest state.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      S.fast = true;
+      document.getAnimations().forEach((a) => { if (a.effect?.target?.closest?.("#fx")) a.finish(); });
+    } else if (S.busy || S.queue.length) S.catchUp = true;
+  });
   window.addEventListener("resize", () => {
     cancelAnimationFrame(resizeRaf);
     resizeRaf = requestAnimationFrame(() => S.game && $("#game").classList.contains("active") && renderGame());
@@ -1282,9 +1314,8 @@ async function wakeServer() {
   const note = $("#serverNote");
   const slow = setTimeout(() => (note.textContent = "Waking up the game server… (free hosting naps — ~30s)"), 1800);
   try {
-    const res = await fetch(`${API}/health`);
-    const h = await res.json();
-    note.textContent = h.model ? "" : "";
+    await fetch(`${API}/health`);
+    note.textContent = "";
   } catch (_) {
     note.textContent = "Can't reach the game server right now.";
   } finally { clearTimeout(slow); if (note.textContent.startsWith("Waking")) note.textContent = ""; }
@@ -1297,7 +1328,7 @@ function boot() {
   wakeServer();
   const code = new URLSearchParams(location.search).get("room");
   if (code) {
-    const saved = JSON.parse(localStorage.getItem(`ibflip:room:${code.toUpperCase()}`) || "null");
+    const saved = store.json(ROOM_KEY(code.toUpperCase()));
     if (saved) { S.code = code.toUpperCase(); S.token = saved.token; S.seat = saved.seat; S.quick = !!saved.quick; connect(); return; }
     $$(".tab").find((t) => t.dataset.tab === "friends").click();
     $("#codeInput").value = code.toUpperCase();
