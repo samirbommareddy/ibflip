@@ -174,14 +174,26 @@ function playerName() {
   if (n) localStorage.setItem("ibflip:name", n);
   return n || "You";
 }
+const EXPIRED = "That room has expired — the server restarts after it's been idle for a while. Start a new one!";
+const friendlyError = (m) => (/room not found/i.test(m || "") ? EXPIRED : m);
 async function api(path, body) {
-  const res = await fetch(`${API}${path}`, {
-    method: body ? "POST" : "GET",
-    headers: body ? { "Content-Type": "application/json" } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const note = $("#serverNote");
+  const slow = setTimeout(() => (note.textContent = "Waking up the game server… (free hosting naps — ~30s)"), 1800);
+  let res;
+  try {
+    res = await fetch(`${API}${path}`, {
+      method: body ? "POST" : "GET",
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (_) {
+    throw new Error("Can't reach the game server right now — try again in a moment.");
+  } finally {
+    clearTimeout(slow);
+    if (note.textContent.startsWith("Waking")) note.textContent = "";
+  }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : res.statusText || "Request failed");
+  if (!res.ok) throw new Error(friendlyError(typeof data.detail === "string" ? data.detail : res.statusText || "Request failed"));
   return data;
 }
 function busyHome(on) { $$("#home .btn").forEach((b) => (b.disabled = on)); }
@@ -232,7 +244,7 @@ function connect() {
     const msg = JSON.parse(ev.data);
     if (msg.type === "state") { S.queue.push(msg); pump(); }
     else if (msg.type === "error") {
-      if (msg.fatal) { localStorage.removeItem(`ibflip:room:${S.code}`); leaveRoom(); $("#homeError").textContent = msg.message; }
+      if (msg.fatal) { localStorage.removeItem(`ibflip:room:${S.code}`); leaveRoom(); $("#homeError").textContent = friendlyError(msg.message); }
       else { toast(`<b>Hmm.</b> ${esc(msg.message)}`, "bad"); S.pendingAction = false; renderGame(); }
     } else if (msg.type === "emote" || msg.type === "chat") bubble(msg.seat, msg.text, msg.type === "chat");
     else if (msg.type === "hint") showHint(msg.action);
