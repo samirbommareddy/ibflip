@@ -26,6 +26,15 @@
         <h1 class="logo">IB<span>·</span>Flip</h1>
         <p class="tagline">The card game of flips, skips and sudden reversals.</p>
 
+        <div class="lost-notice hidden" id="lostNotice" role="status">
+          <p class="lost-title">That table has closed</p>
+          <p class="lost-text" id="lostText"></p>
+          <div class="lost-actions">
+            <button class="btn primary" id="lostAgain">Start a new game</button>
+            <button class="btn ghost" id="lostDismiss">Not now</button>
+          </div>
+        </div>
+
         <div class="panel home-panel">
           <label class="field">
             <span>Your name</span>
@@ -97,6 +106,7 @@
         <div class="hud-room"><span class="muted">Room</span> <b id="hudCode">----</b></div>
         <div class="hud-status" id="hudStatus"></div>
         <div class="hud-right">
+          <button class="icon-btn" id="emoteBtn" title="React" aria-haspopup="true" aria-expanded="false" aria-controls="emoteBar">😊</button>
           <button class="icon-btn" id="hintBtn" title="Hint: what would Shark play?">💡</button>
           <button class="icon-btn" id="soundBtn" title="Sound">🔊</button>
           <button class="icon-btn" data-open="rules" title="Rules">?</button>
@@ -122,6 +132,8 @@
               <span class="pile-label" id="discardLabel">Discard</span>
             </div>
           </div>
+          <div class="narration" id="narration" aria-live="polite"></div>
+          <div class="announce" id="announce" role="status"></div>
           <div class="callout" id="callout"></div>
         </div>
       </div>
@@ -138,7 +150,7 @@
         </div>
       </div>
 
-      <div class="emote-bar" id="emoteBar"></div>
+      <div class="emote-bar" id="emoteBar" role="menu" aria-label="Reactions"></div>
       <div class="toast-stack" id="toasts" aria-live="polite"></div>
     </section>
 
@@ -162,8 +174,8 @@
     <div class="overlay hidden" id="menuOverlay">
       <div class="panel menu-panel">
         <h3>Menu</h3>
-        <label class="row"><span>Bot speed</span>
-          <input type="range" id="speedRange" min="0.25" max="1.6" step="0.05" value="0.9" />
+        <label class="row pace-row"><span>Bot pace</span>
+          <span class="pace"><small>Slower</small><input type="range" id="speedRange" min="0.2" max="2" step="0.05" value="0.85" /><small>Faster</small></span>
         </label>
         <button class="btn" id="copyLink2">Copy invite link</button>
         <button class="btn ghost" id="leaveGame">Leave table</button>
