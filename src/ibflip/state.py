@@ -36,6 +36,9 @@ class TurnContext:
     open_group_rank: Rank | None = None
     played_card_ids: list[int] = field(default_factory=list)
     source: str | None = None
+    # Face-up slot the play group draws from: only cards stacked together in
+    # one slot may be played as a group.
+    face_up_slot: int | None = None
 
 
 @dataclass
@@ -74,3 +77,6 @@ class GameState:
     required_start_card_id: int | None = None
     fix_selected_card_id: int | None = None
     ace_as_one_card_ids: list[int] = field(default_factory=list)
+    # A 5 on top of the pile promoted by a 9s flip is played on zero rather
+    # than on the card beneath it (Special Flip Rules, 9).
+    five_on_zero_card_id: int | None = None
