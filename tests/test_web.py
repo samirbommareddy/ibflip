@@ -78,3 +78,19 @@ def test_full_game_against_bots_reaches_game_over():
                 if options:
                     ws.send_json({"type": "action", "action": rng.choice(options)})
             raise AssertionError("game did not finish")
+
+
+def test_absent_player_is_auto_readied_during_fixing(monkeypatch):
+    import ibflip_web.rooms as rooms
+
+    monkeypatch.setattr(rooms, "AUTOPILOT_AFTER_SECONDS", 0.3)
+    with TestClient(app) as client:
+        host = client.post("/api/rooms", json={"name": "Host"}).json()
+        client.post(f"/api/rooms/{host['code']}/join", json={"name": "Ghost"})  # never connects
+        with client.websocket_connect(f"/ws/{host['code']}?token={host['token']}") as ws:
+            _drain_until(ws, lambda m: m["type"] == "state")
+            ws.send_json({"type": "start"})
+            _drain_until(ws, lambda m: m["type"] == "state" and m.get("game", {}).get("status") == "fixing")
+            ws.send_json({"type": "fix", "op": "done"})
+            state = _drain_until(ws, lambda m: m["type"] == "state" and m.get("game", {}).get("status") == "playing")
+            assert all(p["ready"] for p in state["game"]["players"])

@@ -288,8 +288,24 @@ class Room:
                 await asyncio.to_thread(self._auto_step)
                 await self.broadcast(self.drain_events())
 
+    def _away_fixers(self) -> list[int]:
+        engine = self.engine
+        if engine is None or self.status != "fixing":
+            return []
+        return [
+            i
+            for i, seat in enumerate(self.seats)
+            if seat.kind == "human" and not seat.connected and not engine.state.players[i].fixing_done
+        ]
+
     def _next_auto_delay(self) -> float | None:
         engine = self.engine
+        if engine is not None and self.status == "fixing":
+            away = self._away_fixers()
+            if not away:
+                return None
+            waited = min(time.time() - self.seats[i].last_seen for i in away)
+            return max(0.5, AUTOPILOT_AFTER_SECONDS - waited)
         if engine is None or self.status != "playing":
             return None
         if engine.state.phase is Phase.GAME_OVER:
@@ -308,6 +324,14 @@ class Room:
 
     def _auto_step(self) -> None:
         engine = self._require_engine()
+        if self.status == "fixing":
+            for i in self._away_fixers():
+                if time.time() - self.seats[i].last_seen >= AUTOPILOT_AFTER_SECONDS - 0.5:
+                    heuristic_fix(engine, i)
+                    engine.fix_done(i)
+            self._after_fixing_check()
+            self.touched = time.time()
+            return
         if is_forced(engine):
             resolve_forced(engine)
         else:
