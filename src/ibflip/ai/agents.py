@@ -45,11 +45,19 @@ KEEP_BY_INDEX = [KEEP_VALUE[Rank(i)] for i in range(13)]
 
 
 class RepetitionGuard:
-    """Detects when a bot keeps reaching the same position (e.g. 4-loop
-    ping-pong between deterministic bots) so it can vary its play."""
+    """Detects when a bot is going round in circles so it can vary its play.
+
+    Two signals: the exact same position recurring, and "no progress" — the
+    deck, discard pile and table cards unchanged across many of this bot's
+    own turns (e.g. two bots bouncing 4s back and forth forever).
+    """
+
+    STALL_TURNS = 12
 
     def __init__(self) -> None:
         self.seen: dict[tuple, int] = {}
+        self.progress_key: tuple | None = None
+        self.stalled_for = 0
 
     def count(self, engine: IBFlipEngine) -> int:
         st = engine.state
@@ -64,6 +72,19 @@ class RepetitionGuard:
         if len(self.seen) > 50_000:
             self.seen.clear()
         self.seen[key] = self.seen.get(key, 0) + 1
+        progress = (
+            len(st.draw_pile),
+            len(st.discard_pile),
+            sum(len(slot) for p in st.players for slot in p.face_up_slots),
+            sum(c is not None for p in st.players for c in p.face_down_slots),
+        )
+        if progress == self.progress_key:
+            self.stalled_for += 1
+        else:
+            self.progress_key = progress
+            self.stalled_for = 0
+        if self.stalled_for >= self.STALL_TURNS:
+            return 99
         return self.seen[key]
 
 
