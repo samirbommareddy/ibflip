@@ -79,3 +79,53 @@ def pull(paths: str, dest: str = "/tmp/modal_runs"):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
         print("wrote", target, len(data))
+
+
+@app.function(cpu=32, memory=16384, timeout=3 * 3600, volumes={"/runs": volume})
+def h2h(candidates: list[str], champion: str, games: int = 6000) -> list[dict]:
+    """Head-to-head of each candidate vs the champion at 2-5 players.
+
+    For each player count, `games` games with ONE candidate seat vs a table of
+    champions and `games` with one champion vs candidates. Reports the mean
+    of the two seat scores' difference (>0: candidate stronger) +- 2 s.e.
+    """
+    import os
+    import multiprocessing as mp
+
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    sys.path.insert(0, "/app/scripts")
+    sys.path.insert(0, "/app/src")
+    import numpy as np
+    from train_ppo import h2h_worker
+
+    volume.reload()
+    load = lambda p: {k: v.astype(np.float32) for k, v in np.load(p if p.startswith("/") else f"/runs/{p}").items()}
+    champ = load(champion)
+    out = []
+    with mp.get_context("fork").Pool(31) as pool:
+        for cand in candidates:
+            w = load(cand)
+            row = {"candidate": cand}
+            diffs = []
+            for n in (2, 3, 4, 5):
+                per = games // 31 + 1
+                a = pool.map(h2h_worker, [(w, champ, n, per, 7 * c + n) for c in range(31)])
+                b = pool.map(h2h_worker, [(champ, w, n, per, 100003 + 7 * c + n) for c in range(31)])
+                ga = sum(x["games"] for x in a)
+                sa = sum(x["score"] for x in a) / ga
+                sb = sum(x["score"] for x in b) / ga
+                d = (sa - sb) / 2
+                row[f"{n}p"] = round(d, 4)
+                row[f"{n}p_win"] = round(sum(x["wins"] for x in a) / ga, 4)
+                diffs.append(d)
+            row["mean"] = round(float(np.mean(diffs)), 4)
+            print(row, flush=True)
+            out.append(row)
+    return out
+
+
+@app.local_entrypoint()
+def compare(candidates: str, champion: str = "champion/a880.npz", games: int = 6000):
+    """modal run scripts/modal_train.py::compare --candidates e1_multi/actor_01455.npz,..."""
+    for row in h2h.remote(candidates.split(","), champion, games):
+        print(row)

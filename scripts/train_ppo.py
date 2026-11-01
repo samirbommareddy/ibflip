@@ -24,6 +24,12 @@ import sys
 import time
 from pathlib import Path
 
+# One BLAS thread per process: rollouts run in many worker processes, and
+# multi-threaded BLAS in each of them oversubscribes the CPU badly (torch
+# sets its own thread count separately).
+for _var in ("OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "OMP_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
+
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
