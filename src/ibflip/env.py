@@ -14,7 +14,7 @@ from ibflip.actions import (
     ACTION_RESOLVE_NINE_DRAW,
     ACTION_SPACE_SIZE,
 )
-from ibflip.state import FinishStatus, PendingKind, Phase, TurnContext
+from ibflip.state import PendingKind, Phase, TurnContext
 
 
 class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
@@ -265,27 +265,12 @@ class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
         if self.engine.state.phase is not Phase.GAME_OVER:
             return
 
-        winner = self.engine.state.winner
-        loser = self.engine.state.loser
-        if winner is not None:
-            winner_agent = self._agent_from_player_index(winner)
-            self.rewards[winner_agent] += 1.0
-            for agent in self.agents:
-                if agent != winner_agent:
-                    self.rewards[agent] -= 1.0
-        elif loser is not None:
-            loser_agent = self._agent_from_player_index(loser)
-            self.rewards[loser_agent] -= 1.0
-            for agent in self.agents:
-                if agent != loser_agent:
-                    self.rewards[agent] += 1.0
-        else:
-            for index, player in enumerate(self.engine.state.players):
-                agent = self._agent_from_player_index(index)
-                if player.finish_status is FinishStatus.LEGAL_WIN:
-                    self.rewards[agent] += 1.0
-                elif player.finish_status is FinishStatus.ILLEGAL_LOSS:
-                    self.rewards[agent] -= 1.0
+        # Placement score: 1st +1, last -1, linear in between (zero-sum).
+        players = self.engine.state.players
+        n = len(players)
+        for index, player in enumerate(players):
+            if player.place is not None:
+                self.rewards[self._agent_from_player_index(index)] += 1.0 - 2.0 * (player.place - 1) / (n - 1)
 
         for agent in self.agents:
             self.terminations[agent] = True
