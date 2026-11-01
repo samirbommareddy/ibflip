@@ -113,9 +113,13 @@ class IBFlipEngine:
             return self._fixing_legal_action_indices()
 
         if state.turn_context.open_group_rank is not None:
+            candidates = self._playable_source_card_ids()
+            slot_index = state.turn_context.face_up_slot
+            if slot_index is not None and self._active_source() == "face_up":
+                candidates = self._current_player().face_up_slots[slot_index]
             legal = [
                 candidate
-                for candidate in self._playable_source_card_ids()
+                for candidate in candidates
                 if RANK_INDEX_BY_ID[candidate] == int(state.turn_context.open_group_rank)
             ]
             if state.turn_context.played_card_ids:
@@ -433,11 +437,13 @@ class IBFlipEngine:
     def _play_card(self, value: int) -> None:
         player = self._current_player()
         source = self._active_source()
+        context = self.state.turn_context
+        if source == "face_up" and context.face_up_slot is None:
+            context.face_up_slot = next(i for i, slot in enumerate(player.face_up_slots) if value in slot)
         self._remove_card_from_source(player, value, source)
         self._place_on_live(value)
         self._emit("play", player=self.state.current_player, card=value, source=source)
 
-        context = self.state.turn_context
         if context.open_group_rank is None:
             context.open_group_rank = self.rank(value)
             context.source = source

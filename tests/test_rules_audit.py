@@ -294,3 +294,42 @@ def test_serialized_legal_actions_match_engine_exactly():
                 pool = me.hand if view["source"] == "hand" else [c for slot in me.face_up_slots for c in slot]
                 assert all(card in pool for card in L["cards"])
             engine.step(rng.choice(legal))
+
+
+# ------------------------------------------------------- face-up multi-plays
+def _face_up_queens_state() -> GameState:
+    # Hand empty; QH and QD stacked in slot 0, QC alone in slot 1.
+    return GameState(
+        players=[
+            Player(face_up_slots=[[QH, QD], [card_id(Rank.QUEEN, Suit.CLUBS)], [card_id(Rank.KING, Suit.HEARTS)]], face_down_slots=[card_id(Rank.TWO, Suit.HEARTS)]),
+            Player(hand=[card_id(Rank.KING, Suit.CLUBS)]),
+        ],
+        live_cards=[card_id(Rank.JACK, Suit.SPADES)],
+        phase=Phase.MIDDLE_GAME,
+        current_player=0,
+    )
+
+
+def test_face_up_group_only_continues_from_the_same_stacked_slot():
+    """Only cards stacked in the same face-up slot (Fixing Hand: "place any
+    number of those cards together on one of the three face-up slots") may be
+    played together; same-rank cards in other slots are a separate play."""
+    qc = card_id(Rank.QUEEN, Suit.CLUBS)
+    engine = make_engine(_face_up_queens_state())
+    assert {QH, QD, qc} <= set(engine.get_legal_action_indices())
+
+    engine.step(QH)
+    legal = engine.get_legal_action_indices()
+    assert QD in legal
+    assert qc not in legal
+    view = serialize_view(engine, 0, "playing")
+    assert qc not in view["legal"]["cards"] and QD in view["legal"]["cards"]
+    engine.step(QD)
+    assert engine.get_legal_action_indices() == [ACTION_END_PLAY_GROUP]
+
+
+def test_single_face_up_card_cannot_be_joined_by_another_slot():
+    qc = card_id(Rank.QUEEN, Suit.CLUBS)
+    engine = make_engine(_face_up_queens_state())
+    engine.step(qc)
+    assert engine.get_legal_action_indices() == [ACTION_END_PLAY_GROUP]
