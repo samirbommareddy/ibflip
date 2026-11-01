@@ -10,6 +10,4 @@ wheels/
 # Virtual environments
 .venv
 
-# Local Netlify folder
-.netlify
 runs/

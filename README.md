@@ -97,6 +97,13 @@ Then copy `runs/<name>/actor_latest.npz` to `src/ibflip/ai/model.npz`.
 
 ## Deploy
 
-- **Backend** (Render, `render.yaml`): `uvicorn ibflip_web.main:app`.
-- **Front-end** (Netlify, `netlify.toml`): publishes `static/`; the client
-  talks to the API URL in the `ibflip-api` meta tag of `static/index.html`.
+- **Backend** (Render free web service, `render.yaml`): `uvicorn ibflip_web.main:app`,
+  auto-deploys from `main`. Free instances sleep after ~15 min idle; the
+  client shows a "waking the server" note and treats lost rooms as expired.
+- **Front-end** (Cloudflare Pages project `ibflip`): publishes `static/`.
+  `.github/workflows/pages.yml` deploys `main` to production and other
+  branches to `<branch>.ibflip.pages.dev` (needs repo secrets
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`). Manual deploy:
+  `npx wrangler pages deploy static --project-name ibflip --branch main`.
+  The client talks to the API URL in the `ibflip-api` meta tag of
+  `static/index.html`.
