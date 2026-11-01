@@ -4,7 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0d3b2a" />
-    <meta name="ibflip-api" content="https://ibflip.onrender.com" />
+    <meta name="ibflip-api" content="https://api.ibflip.com" />
+    <script>
+      if (location.hostname === "www.ibflip.com") location.replace("https://ibflip.com" + location.pathname + location.search + location.hash);
+    </script>
     <title>IB-Flip</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='18' y='8' width='64' height='84' rx='10' fill='%23fffdf6' stroke='%23c9a24b' stroke-width='5'/><text x='50' y='66' font-size='46' text-anchor='middle' fill='%23c0392b'>♥</text></svg>" />
     <link rel="stylesheet" href="./styles.css" />
