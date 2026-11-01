@@ -491,7 +491,7 @@ function renderStatus() {
   if (g.status === "fixing") {
     if (me.ready) {
       const waiting = g.players.map((p, i) => (!p.ready ? r.seats[i]?.name : null)).filter(Boolean);
-      text = `Waiting for ${waiting.join(", ")}…`;
+      text = `Waiting for ${waiting.map(esc).join(", ")}…`;
     } else {
       yours = true;
       text = S.selected === null
