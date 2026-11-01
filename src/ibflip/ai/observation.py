@@ -94,7 +94,12 @@ _LIVE = NUM_RANKS + (NUM_RANKS + 1) + 1 + 1 + NUM_RANKS + 1  # top, target(+any)
 _PILES = NUM_RANKS + 1 + 1 + NUM_RANKS  # discard counts, discard size, draw size, unseen
 _OPP = 1 + 1 + NUM_RANKS + 1 + NUM_RANKS + 1  # present, hand size, known, unknown, face-up, face-down
 _FLAGS = 1 + 1 + NUM_RANKS + 1 + 1 + 3 + (MAX_PLAYERS - 1) + 1
-OBS_SIZE = _SELF + _LIVE + _PILES + MAX_OPPONENTS * _OPP + _FLAGS
+OBS_SIZE_V1 = _SELF + _LIVE + _PILES + MAX_OPPONENTS * _OPP + _FLAGS
+# v2 appends, per opponent (in turn order), the ranks publicly inferred to be
+# missing from the unseen part of their hand. Appending keeps v1 models valid:
+# they simply read the first OBS_SIZE_V1 entries.
+_LACKS = MAX_OPPONENTS * NUM_RANKS
+OBS_SIZE = OBS_SIZE_V1 + _LACKS
 
 
 def encode(engine: IBFlipEngine, player_index: int) -> np.ndarray:
@@ -215,5 +220,12 @@ def encode(engine: IBFlipEngine, player_index: int) -> np.ndarray:
     o += MAX_PLAYERS - 1
     obs[o] = 1.0 if state.direction == 1 else 0.0
     o += 1
-    assert o == OBS_SIZE, (o, OBS_SIZE)
+    assert o == OBS_SIZE_V1, (o, OBS_SIZE_V1)
+    for k, opp_index in enumerate(opponent_order(engine, player_index)):
+        mask = state.players[opp_index].lacks_mask
+        if mask:
+            base = o + k * NUM_RANKS
+            for r in range(NUM_RANKS):
+                if (mask >> r) & 1:
+                    obs[base + r] = 1.0
     return obs

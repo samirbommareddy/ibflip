@@ -170,3 +170,30 @@ def test_finishing_on_two_is_illegal_because_player_would_play_again():
 
     assert engine.state.players[0].finish_status is FinishStatus.ILLEGAL_LOSS
     assert engine.state.loser == 0
+
+
+def test_lacks_mask_never_contradicts_hidden_hand():
+    import random
+
+    from ibflip.cards import RANK_INDEX_BY_ID
+    from ibflip.state import Phase
+
+    rng = random.Random(7)
+    checked = 0
+    for game in range(150):
+        engine = IBFlipEngine(rng.choice([2, 3, 4, 5]), seed=game)
+        engine.reset()
+        engine.auto_fix_hands_randomly()
+        for _ in range(600):
+            if engine.state.phase is Phase.GAME_OVER:
+                break
+            engine.step(rng.choice(engine.get_legal_action_indices()))
+            for player in engine.state.players:
+                unknown = list(player.hand)
+                for card in player.known_hand:
+                    if card in unknown:
+                        unknown.remove(card)
+                for card in unknown:
+                    assert not (player.lacks_mask >> RANK_INDEX_BY_ID[card]) & 1
+                checked += bool(player.lacks_mask)
+    assert checked > 100

@@ -164,6 +164,9 @@ class IBFlipEngine:
             else:
                 self._play_card(action)
         elif action == ACTION_PICK_UP_LIVE_PILE:
+            if not (self.state.pending and self.state.pending.kind is PendingKind.FOUR_LOOP):
+                # Forced pickup: they had nothing playable on this target.
+                self._record_lacks(self.state.current_player)
             self._pick_up_live_pile(self.state.current_player)
             self._advance_to_next_player()
         elif action == ACTION_REVEAL_DRAW_PILE_TOP:
@@ -622,6 +625,8 @@ class IBFlipEngine:
     def _draw_to_three(self, player: Player) -> None:
         missing = max(0, 3 - len(player.hand))
         count = min(missing, len(self.state.draw_pile))
+        if count:
+            player.lacks_mask = 0
         for _ in range(count):
             player.hand.append(self.state.draw_pile.pop(0))
         if count:
@@ -673,7 +678,20 @@ class IBFlipEngine:
         offset = steps if self.state.direction == 1 else -steps
         return active_indices[(position + offset) % len(active_indices)]
 
+    def _record_lacks(self, player_index: int) -> None:
+        state = self.state
+        if state.pending and state.pending.kind is PendingKind.FOUR_LOOP:
+            mask = FOUR_LOOP_RANK_MASK
+        else:
+            target = self._target_rank_index()
+            if target is None:
+                return
+            mask = sum(1 << r for r in range(13) if can_play_on_index(r, target))
+        state.players[player_index].lacks_mask |= mask
+
     def _reveal_draw_pile_top(self) -> None:
+        # Revealing is only allowed with nothing playable in hand.
+        self._record_lacks(self.state.current_player)
         revealed = self.state.draw_pile.pop(0)
         playable = can_play_on_index(RANK_INDEX_BY_ID[revealed], self._target_rank_index())
         self._emit("reveal", player=self.state.current_player, card=revealed, ok=playable)

@@ -291,6 +291,21 @@ def build_models(torch, hidden: list[int]):
     return Actor(), Critic()
 
 
+def widen_inputs(torch, ck) -> bool:
+    """Function-preserving upgrade of an older checkpoint to a wider
+    observation: new input features get zero weights."""
+    w = ck["actor"]["trunk.0.weight"]
+    old = w.shape[1]
+    if old == OBS_SIZE:
+        return False
+    pad = torch.zeros(w.shape[0], OBS_SIZE - old)
+    ck["actor"]["trunk.0.weight"] = torch.cat([w, pad], dim=1)
+    cw = ck["critic"]["net.0.weight"]
+    ck["critic"]["net.0.weight"] = torch.cat([cw[:, :old], torch.zeros(cw.shape[0], OBS_SIZE - old), cw[:, old:]], dim=1)
+    print(f"widened inputs {old} -> {OBS_SIZE}", flush=True)
+    return True
+
+
 def export_actor(actor) -> dict:
     out = {}
     linears = [m for m in actor.trunk if hasattr(m, "weight")]
@@ -345,9 +360,11 @@ def main() -> None:
     start_iter = 0
     if args.resume:
         ck = torch.load(args.resume, weights_only=False)
+        widened = widen_inputs(torch, ck)
         actor.load_state_dict(ck["actor"])
         critic.load_state_dict(ck["critic"])
-        opt.load_state_dict(ck["opt"])
+        if not widened:
+            opt.load_state_dict(ck["opt"])
         pool = ck.get("pool", [])
         start_iter = ck.get("iter", 0)
 
@@ -359,7 +376,10 @@ def main() -> None:
         linears = [m for m in actor.trunk if hasattr(m, "weight")]
         with torch.no_grad():
             for i, lin in enumerate(linears):
-                lin.weight.copy_(torch.from_numpy(init[f"w{i}"].astype(np.float32).T))
+                w_init = init[f"w{i}"].astype(np.float32)
+                if i == 0 and w_init.shape[0] < OBS_SIZE:
+                    w_init = np.concatenate([w_init, np.zeros((OBS_SIZE - w_init.shape[0], w_init.shape[1]), np.float32)])
+                lin.weight.copy_(torch.from_numpy(w_init.T))
                 lin.bias.copy_(torch.from_numpy(init[f"b{i}"].astype(np.float32)))
             actor.head.weight.copy_(torch.from_numpy(init["pw"].astype(np.float32).T))
             actor.head.bias.copy_(torch.from_numpy(init["pb"].astype(np.float32)))

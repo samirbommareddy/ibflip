@@ -49,6 +49,10 @@ class Player:
     # Cards in ``hand`` that every player has seen enter it (picked-up live
     # pile, failed reveals, dealt 3s, cards swapped out of face-up slots...).
     known_hand: list[int] = field(default_factory=list)
+    # Bitmask of ranks publicly known to be absent from the *unknown* part of
+    # the hand (inferred when the player was forced to pick up / flip the
+    # deck). Cleared whenever they draw unseen cards.
+    lacks_mask: int = 0
 
     def has_any_cards(self) -> bool:
         return bool(self.hand or any(self.face_up_slots) or any(card is not None for card in self.face_down_slots))

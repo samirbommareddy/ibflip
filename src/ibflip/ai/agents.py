@@ -221,7 +221,8 @@ class MLPPolicy:
         self.value_b = data["vb"].astype(np.float32) if "vb" in data else None
 
     def trunk(self, obs: np.ndarray) -> np.ndarray:
-        x = obs
+        n_in = self.layers[0][0].shape[0]
+        x = obs[..., :n_in] if obs.shape[-1] != n_in else obs  # older models read a prefix
         for w, b in self.layers:
             x = x @ w + b
             x = np.maximum(x, 0.0)
