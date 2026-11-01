@@ -3,6 +3,29 @@
 Written at the end of a session so a fresh session (with new env vars) can
 continue. Delete this file when the phase is done.
 
+## PRIORITY #1 — Shark-with-search experiment (user: "should not lose focus!!")
+
+Before/alongside the deployment work, run the search benchmark and report it:
+
+```bash
+uv run python -u scripts/bench_search.py fix:2:200 fix:4:200 search:4:200 search:2:120 search:3:150
+```
+
+It is slow on 4 local cores (hours for the 2p search arm): run it in the
+background (`nohup ... > /tmp/bench_search.log &`) and read the running
+estimates as they come (every 40 deals). If Modal credit allows, the same
+paired design can be fanned out on Modal for more games.
+
+Questions to answer for the user:
+1. Does policy + PIMC search beat policy-only Shark, by how much, at 2/3/4p?
+2. Does searched hand-fixing (`search_fix`) beat the heuristic fixing?
+3. Cost: ms per move. The browser bar is ~1 s/move on a mid-range phone,
+   measured in the JS/Worker implementation; CPython timings are a proxy.
+4. If search helps: ship it in the browser Worker (budgeted by time), and
+   consider distilling search back into the network (train the policy to
+   imitate search choices, i.e. expert iteration) so even policy-only Shark
+   gets stronger. If it doesn't help: say so with numbers and ship policy-only.
+
 ## HARD RULE (from the user)
 
 The user must never be charged. Never add payment methods, upgrade plans,
@@ -84,8 +107,7 @@ alongside and update based on results.
 - `src/ibflip/ai/pimc.py`: policy-guided PIMC (`PimcAgent`: searches only when
   policy max-prob < gate; top-k candidates × N determinized worlds, playouts by
   the policy) and `search_fix` (searches the face-up arrangement). **Not yet
-  benchmarked.** The experiment script was `/tmp/exp_pimc.py` (lost with the
-  container): paired design — same deal seed played twice, once with the hero
+  benchmarked — see PRIORITY #1.** Script: `scripts/bench_search.py`, paired design — same deal seed played twice, once with the hero
   variant and once with plain Shark in the same seat, others Shark; report the
   mean score difference ± s.e. Timings measured: a searched 2p game ≈ 57 s on
   one CPython core (search fires at ~25% of decisions), 4p ≈ 1 s; search_fix
