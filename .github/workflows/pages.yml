@@ -2,6 +2,7 @@ name: Deploy frontend to Cloudflare Pages
 
 # main -> production (ibflip.pages.dev / ibflip.com); other branches -> <branch>.ibflip.pages.dev previews.
 on:
+  workflow_dispatch:
   push:
     paths: ["static/**", ".github/workflows/pages.yml"]
 
