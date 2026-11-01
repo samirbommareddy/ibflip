@@ -405,17 +405,20 @@ class IBFlipEngine:
         state = self.state
         if not state.live_cards:
             return None
-        top = state.live_cards[-1]
-        if top in state.ace_as_one_card_ids:
+        # "When a 5 is played, the next player must play on the card beneath
+        # the 5. If the 5 is the only card in the live cards, the next player
+        # plays on zero." Several 5s in a row are all seen through.
+        index = len(state.live_cards) - 1
+        while index >= 0 and RANK_INDEX_BY_ID[state.live_cards[index]] == int(Rank.FIVE):
+            if state.live_cards[index] == state.five_on_zero_card_id:
+                return None
+            index -= 1
+        if index < 0:
             return None
-        if self.rank(top) is Rank.FIVE:
-            if len(state.live_cards) == 1:
-                return None
-            beneath = state.live_cards[-2]
-            if beneath in state.ace_as_one_card_ids:
-                return None
-            return RANK_INDEX_BY_ID[beneath]
-        return RANK_INDEX_BY_ID[top]
+        card = state.live_cards[index]
+        if card in state.ace_as_one_card_ids:
+            return None
+        return RANK_INDEX_BY_ID[card]
 
     def _can_reveal_draw_pile(self, playable: list[int]) -> bool:
         return self.state.phase is Phase.EARLY_GAME and bool(self.state.draw_pile) and not playable and self._active_source() == "hand"
@@ -431,7 +434,7 @@ class IBFlipEngine:
         player = self._current_player()
         source = self._active_source()
         self._remove_card_from_source(player, value, source)
-        self.state.live_cards.append(value)
+        self._place_on_live(value)
         self._emit("play", player=self.state.current_player, card=value, source=source)
 
         context = self.state.turn_context
@@ -440,9 +443,34 @@ class IBFlipEngine:
             context.source = source
         context.played_card_ids.append(value)
 
-        if self.rank(value) is Rank.ACE and self._rank_beneath_top() is Rank.SEVEN:
-            if value not in self.state.ace_as_one_card_ids:
-                self.state.ace_as_one_card_ids.append(value)
+        # "Whenever one or more cards are played onto the live cards, the
+        # player who played must draw [back to three]. If a player draws a card
+        # that they just played, they may play that card as well": draw now,
+        # so a drawn card of the group's rank can still join the group.
+        self._draw_to_three_if_early(player)
+
+    def _place_on_live(self, value: int) -> None:
+        """Put a card on the live pile, updating per-card play status."""
+        state = self.state
+        target = self._target_rank_index()
+        previous = state.live_cards[-1] if state.live_cards else None
+        state.live_cards.append(value)
+        # Status from an earlier visit to the live pile no longer applies.
+        if value in state.ace_as_one_card_ids:
+            state.ace_as_one_card_ids.remove(value)
+        if value == state.five_on_zero_card_id:
+            state.five_on_zero_card_id = None
+        if self.rank(value) is Rank.ACE:
+            # "When an ace is played on a 7, that ace becomes a one". Aces
+            # played together with it (same group) are on the 7 as well.
+            on_seven = target == int(Rank.SEVEN)
+            with_one = (
+                previous is not None
+                and previous in state.ace_as_one_card_ids
+                and previous in state.turn_context.played_card_ids
+            )
+            if on_seven or with_one:
+                state.ace_as_one_card_ids.append(value)
 
     def _remove_card_from_source(self, player: Player, value: int, source: str | None) -> None:
         if source == "hand":
@@ -456,11 +484,6 @@ class IBFlipEngine:
                     slot.remove(value)
                     return
         raise IllegalActionError(f"card {value} is not playable from source {source}")
-
-    def _rank_beneath_top(self) -> Rank | None:
-        if len(self.state.live_cards) < 2:
-            return None
-        return self.rank(self.state.live_cards[-2])
 
     def _commit_open_group(self) -> None:
         context = self.state.turn_context
@@ -478,7 +501,7 @@ class IBFlipEngine:
         if self.state.discard_pile:
             index = self.rng.randrange(len(self.state.discard_pile))
             drawn = self.state.discard_pile.pop(index)
-            self.state.live_cards.append(drawn)
+            self._place_on_live(drawn)
             self._emit("nine_draw", player=self.state.current_player, card=drawn)
             self.state.turn_context.played_card_ids.append(drawn)
             self.state.pending = None
@@ -573,6 +596,11 @@ class IBFlipEngine:
             self.rng.shuffle(new_live)
             self.state.live_cards = new_live
             self.state.discard_pile = old_live
+            # The promoted pile was never "played": no ace in it is a one, and
+            # a 5 on top means playing on zero.
+            self.state.ace_as_one_card_ids = []
+            top = new_live[-1]
+            self.state.five_on_zero_card_id = top if self.rank(top) is Rank.FIVE else None
             self.state.current_player = player_index
             self._resolve_promoted_live_top_after_nine_flip(player_index)
             return
@@ -693,10 +721,11 @@ class IBFlipEngine:
         # Revealing is only allowed with nothing playable in hand.
         self._record_lacks(self.state.current_player)
         revealed = self.state.draw_pile.pop(0)
-        playable = can_play_on_index(RANK_INDEX_BY_ID[revealed], self._target_rank_index())
+        # Same legality as a card from hand (incl. "4, 5 or 6" in a 4 loop).
+        playable = self._is_legal_card_play(revealed)
         self._emit("reveal", player=self.state.current_player, card=revealed, ok=playable)
         if playable:
-            self.state.live_cards.append(revealed)
+            self._place_on_live(revealed)
             self.state.turn_context = TurnContext(open_group_rank=self.rank(revealed), played_card_ids=[revealed], source="draw")
             self._resolve_or_defer_for_latest_card(revealed)
         else:
@@ -715,7 +744,7 @@ class IBFlipEngine:
         ok = self._is_legal_card_play(value)
         self._emit("face_down", player=player_index, slot=slot_index, card=value, ok=ok)
         if ok:
-            self.state.live_cards.append(value)
+            self._place_on_live(value)
             self.state.turn_context = TurnContext(open_group_rank=self.rank(value), played_card_ids=[value], source="face_down")
             self._resolve_or_defer_for_latest_card(value)
         else:
