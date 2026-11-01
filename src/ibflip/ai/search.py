@@ -20,7 +20,7 @@ import numpy as np
 from ibflip.cards import RANK_INDEX_BY_ID, Rank
 from ibflip.engine import IBFlipEngine
 from ibflip.state import Phase
-from ibflip.ai.arena import score
+from ibflip.ai.arena import game_result, score
 from ibflip.ai.observation import (
     A_END_GROUP,
     A_FACE_DOWN,
@@ -146,7 +146,7 @@ def playout(engine: IBFlipEngine, rollout, rng: random.Random, max_steps: int = 
             break
         _step_compact(engine, rollout.choose_compact(engine, mask), mapping, rng)
         steps += 1
-    return {"winner": engine.state.winner, "loser": engine.state.loser}
+    return game_result(engine)
 
 
 class SearchAgent:

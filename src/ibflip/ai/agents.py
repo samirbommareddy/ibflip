@@ -15,6 +15,7 @@ import numpy as np
 
 from ibflip.cards import RANK_INDEX_BY_ID, Rank
 from ibflip.engine import IBFlipEngine
+from ibflip.state import FinishStatus
 from ibflip.ai.observation import (
     A_END_GROUP,
     A_FACE_DOWN,
@@ -42,6 +43,10 @@ KEEP_VALUE = {
     Rank.TEN: 9.0,
 }
 KEEP_BY_INDEX = [KEEP_VALUE[Rank(i)] for i in range(13)]
+
+
+# Finishing illegally or flipping the 8s: the outcomes a move must avoid.
+_LOSING = (FinishStatus.ILLEGAL_LOSS, FinishStatus.EIGHTS_LOSS)
 
 
 class RepetitionGuard:
@@ -179,7 +184,7 @@ class HeuristicAgent:
                 sim_mask, sim_map = compact_legal(sim)
                 if sim_mask[A_END_GROUP]:
                     sim.step(sim_map[A_END_GROUP][0], validate=False)
-            return sim.state.loser == me
+            return sim.state.players[me].finish_status in _LOSING
 
         if state.turn_context.open_group_rank is not None:
             group = int(state.turn_context.open_group_rank)
@@ -259,7 +264,7 @@ def loses_immediately(engine: IBFlipEngine, compact: int, mapping: dict[int, lis
         if sim_mask[A_END_GROUP] and compact != A_END_GROUP:
             # Only flag if *every* way of continuing loses; closing now is one option.
             sim.step(sim_map[A_END_GROUP][0], validate=False)
-    return sim.state.loser == me
+    return sim.state.players[me].finish_status in _LOSING
 
 
 class NeuralAgent:

@@ -120,7 +120,7 @@ def test_five_makes_next_player_play_on_card_beneath_it():
     assert not mask[jack]
 
 
-def test_four_loop_allows_only_four_five_six_or_pickup():
+def test_four_loop_allows_only_four_five_or_six_when_player_has_one():
     four = card_id(Rank.FOUR, Suit.HEARTS)
     six = card_id(Rank.SIX, Suit.CLUBS)
     jack = card_id(Rank.JACK, Suit.CLUBS)
@@ -140,7 +140,8 @@ def test_four_loop_allows_only_four_five_six_or_pickup():
     assert engine.state.pending.kind is PendingKind.FOUR_LOOP
     assert mask[six]
     assert not mask[jack]
-    assert mask[ACTION_PICK_UP_LIVE_PILE]
+    # Ruling: with a 4, 5 or 6 to play, picking up is not an option.
+    assert not mask[ACTION_PICK_UP_LIVE_PILE]
 
 
 def test_nine_uses_forced_rng_draw_action_and_resolves_drawn_card():

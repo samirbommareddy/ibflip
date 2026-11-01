@@ -221,10 +221,9 @@ class Room:
         engine = self._require_engine()
         if engine.state.phase is Phase.GAME_OVER and self.status != "over":
             self.status = "over"
+            # The game runs until everyone is placed; 1st place gets the win.
             if engine.state.winner is not None:
                 self.seats[engine.state.winner].wins += 1
-            elif engine.state.loser is not None and len(self.seats) == 2:
-                self.seats[1 - engine.state.loser].wins += 1
 
     def _require_engine(self) -> IBFlipEngine:
         if self.engine is None:

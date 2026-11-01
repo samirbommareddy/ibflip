@@ -21,8 +21,9 @@ class PendingKind(Enum):
 
 
 class FinishStatus(Enum):
-    LEGAL_WIN = auto()
-    ILLEGAL_LOSS = auto()
+    LEGAL_WIN = auto()  # finished legally
+    ILLEGAL_LOSS = auto()  # finished illegally
+    EIGHTS_LOSS = auto()  # flipped the 8s
 
 
 @dataclass
@@ -48,6 +49,9 @@ class Player:
     face_down_slots: list[int | None] = field(default_factory=list)
     active: bool = True
     finish_status: FinishStatus | None = None
+    # Final placement, 1 = best. Set when the player finishes (or is the last
+    # one left); None while still playing.
+    place: int | None = None
     fixing_done: bool = False
     # Cards in ``hand`` that every player has seen enter it (picked-up live
     # pile, failed reveals, dealt 3s, cards swapped out of face-up slots...).
