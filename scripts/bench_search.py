@@ -42,28 +42,50 @@ def make(kind: str, seed: int):
     raise ValueError(kind)
 
 
+def _timed(agent, method: str, acc: list) -> None:
+    inner = getattr(agent, method)
+
+    def wrapper(*a, **k):
+        t = time.perf_counter()
+        try:
+            return inner(*a, **k)
+        finally:
+            acc[0] += time.perf_counter() - t
+
+    setattr(agent, method, wrapper)
+
+
 def paired(args):
     kind, n, game_seed = args
     seat = game_seed % n
-    scores, timing = [], (0.0, 0)
+    scores, timing, hero_stats = [], (0.0, 0), (0.0, 0.0, 0, 0)
     for hero_kind in (kind, "shark"):
         agents = [make(hero_kind if i == seat else "shark", game_seed * 10 + i) for i in range(n)]
+        hero = agents[seat]
+        play_acc, fix_acc = [0.0], [0.0]
+        if hero_kind == kind:
+            _timed(hero, "choose", play_acc)
+            _timed(hero, "fix", fix_acc)
         t = time.perf_counter()
         result = play_game(agents, seed=game_seed, max_steps=3000)
         if hero_kind == kind:
-            hero = agents[seat]
             timing = (time.perf_counter() - t, getattr(hero, "decisions", 0))
+            hero_stats = (play_acc[0], fix_acc[0], getattr(hero, "decisions", 0), getattr(hero, "searches", 0))
         scores.append(score(result, seat, n))
-    return scores[0] - scores[1], scores[0], scores[1], timing
+    return scores[0] - scores[1], scores[0], scores[1], timing, hero_stats
 
 
 def main() -> None:
-    plan = [(k, int(n), int(g)) for k, n, g in (x.split(":") for x in sys.argv[1:])]
+    # kind:players:deals[:seed_base]  (default seed base 50000; use another to get fresh deals)
+    plan = []
+    for x in sys.argv[1:]:
+        k, n, g, *base = x.split(":")
+        plan.append((k, int(n), int(g), int(base[0]) if base else 50_000))
     with Pool(4) as pool:
-        for kind, n, games in plan:
+        for kind, n, games, base in plan:
             t0 = time.time()
             res = []
-            for i, r in enumerate(pool.imap_unordered(paired, [(kind, n, 50_000 + s) for s in range(games)])):
+            for i, r in enumerate(pool.imap_unordered(paired, [(kind, n, base + s) for s in range(games)])):
                 res.append(r)
                 if (i + 1) % 40 == 0:
                     d = [x[0] for x in res]
@@ -76,6 +98,17 @@ def main() -> None:
                 f"hero {statistics.mean(r[1] for r in res):+.3f} vs base {statistics.mean(r[2] for r in res):+.3f}  "
                 f"~{1000 * secs / decisions:.0f} ms/decision (CPython, whole game incl. opponents)  "
                 f"[{games} paired deals, {time.time() - t0:.0f}s]",
+                flush=True,
+            )
+            play_s = sum(r[4][0] for r in res)
+            fix_s = sum(r[4][1] for r in res)
+            hero_dec = max(1, sum(r[4][2] for r in res))
+            searches = sum(r[4][3] for r in res)
+            print(
+                f"         hero only: {1000 * play_s / hero_dec:.1f} ms/move avg, "
+                f"search fired {searches}/{hero_dec} = {100 * searches / hero_dec:.1f}% of moves, "
+                f"~{1000 * play_s / max(1, searches):.0f} ms per searched move (upper bound), "
+                f"{1000 * fix_s / len(res):.0f} ms fixing per deal",
                 flush=True,
             )
 
