@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import threading
@@ -15,7 +16,7 @@ from pathlib import Path
 import modal
 
 ROOT = Path(__file__).resolve().parents[1]
-CPU = 64
+CPU = int(os.environ.get("IBFLIP_MODAL_CPU", "64"))
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
