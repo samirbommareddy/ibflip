@@ -26,6 +26,23 @@ Questions to answer for the user:
    imitate search choices, i.e. expert iteration) so even policy-only Shark
    gets stronger. If it doesn't help: say so with numbers and ship policy-only.
 
+### RESULT (done, Nov 2026) — ship policy-only Shark
+
+Paired deals vs plain Shark (score diff, ± 1 s.e.; 2p: +0.10 = +5 pts win rate):
+
+| variant | players | deals | improvement | hero ms/move (CPython) |
+|---|---|---|---|---|
+| search_fix | 2 | 200 | +0.035 ± 0.089 | ~585 |
+| search_fix | 4 | 200 | -0.017 ± 0.052 | ~232 |
+| search (play) | 2 | 600 (3 seed sets) | **+0.068 ± ~0.052** | ~400 (search fires on 26% of moves, ~1.5 s each) |
+| search (play) | 3 | 190 | +0.003 ± ~0.062 | ~60–80 (fires 11.5%, ~0.7 s each) |
+| search (play) | 4 | 200 | +0.027 ± 0.039 | ~26 (fires 9%, ~0.3 s each) |
+
+Decision: below the +0.10 bar at 2p and ~0 at 3–4p, while a searched move
+costs ~1.5 s in CPython. Ship policy-only Shark; no search_fix. Search can
+come back later as an optional 2p "hard" mode if a better variant shows a
+clear gain. Expert iteration not worth it on this evidence.
+
 ## HARD RULE (from the user)
 
 The user must never be charged. Never add payment methods, upgrade plans,
