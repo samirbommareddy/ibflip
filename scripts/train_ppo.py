@@ -46,7 +46,7 @@ from ibflip.engine import IBFlipEngine  # noqa: E402
 from ibflip.state import Phase  # noqa: E402
 
 PRIV_SIZE = NUM_RANKS * (2 + 2 * MAX_OPPONENTS)
-MAX_STEPS = 2500
+MAX_STEPS = 1000  # overridden by --max-steps
 
 
 def privileged(engine: IBFlipEngine, player_index: int) -> np.ndarray:
@@ -101,6 +101,7 @@ def rollout_worker(args) -> dict:
     rewards: list[float] = []
     n = 0
     games = 0
+    timeouts_count = 0
     lens = []
     while n < n_decisions:
         num_players = prng.choice(cfg["player_counts"])
@@ -124,7 +125,7 @@ def rollout_worker(args) -> dict:
             engine.fix_done(i)
         traj: dict[int, list[int]] = {i: [] for i in range(num_players) if seats[i] == "L"}
         steps = 0
-        while engine.state.phase is not Phase.GAME_OVER and steps < MAX_STEPS:
+        while engine.state.phase is not Phase.GAME_OVER and steps < cfg["max_steps"]:
             resolve_forced(engine)
             if engine.state.phase is Phase.GAME_OVER:
                 break
@@ -151,12 +152,15 @@ def rollout_worker(args) -> dict:
             engine.step(prng.choice(mapping[a]), validate=False)
             steps += 1
         result = {"winner": engine.state.winner, "loser": engine.state.loser}
+        timed_out = result["winner"] is None and result["loser"] is None
         for i, idxs in traj.items():
             if idxs:
                 episodes.append(idxs)
-                rewards.append(score(result, i, num_players))
+                # A stalled game is a loss for everyone: never worth dragging out.
+                rewards.append(cfg["timeout_reward"] if timed_out else score(result, i, num_players))
         games += 1
         lens.append(steps)
+        timeouts_count += int(timed_out)
     return {
         "obs": np.asarray(buf["obs"], dtype=np.float32),
         "priv": np.asarray(buf["priv"], dtype=np.float32),
@@ -167,7 +171,37 @@ def rollout_worker(args) -> dict:
         "rewards": rewards,
         "games": games,
         "mean_len": float(np.mean(lens)) if lens else 0.0,
+        "timeouts": timeouts_count,
     }
+
+
+def selfplay_len_worker(args) -> dict:
+    """Greedy policy vs itself: long games mean the policy learned to stall."""
+    weights, num_players, games, seed = args
+    policy = MLPPolicy(weights)
+    rng = random.Random(seed)
+    lens = []
+    for _ in range(games):
+        engine = IBFlipEngine(num_players, seed=rng.randrange(2**31))
+        engine.record_events = False
+        engine.reset()
+        for i in range(num_players):
+            heuristic_fix(engine, i)
+            engine.fix_done(i)
+        steps = 0
+        while engine.state.phase is not Phase.GAME_OVER and steps < 3000:
+            resolve_forced(engine)
+            if engine.state.phase is Phase.GAME_OVER:
+                break
+            mask, mapping = compact_legal(engine)
+            if mask.sum() == 1:
+                a = int(np.flatnonzero(mask)[0])
+            else:
+                a = int(np.argmax(policy.logits(encode(engine, engine.state.current_player), mask)))
+            engine.step(rng.choice(mapping[a]), validate=False)
+            steps += 1
+        lens.append(steps)
+    return {"lens": lens}
 
 
 def eval_worker(args) -> dict:
@@ -263,6 +297,8 @@ def main() -> None:
     parser.add_argument("--eval-games", type=int, default=400)
     parser.add_argument("--async-rollouts", type=int, default=1)
     parser.add_argument("--player-counts", default="2,2,3,3,4,4,5,5")
+    parser.add_argument("--max-steps", type=int, default=1000)
+    parser.add_argument("--timeout-reward", type=float, default=-1.0)
     args = parser.parse_args()
 
     import torch
@@ -288,6 +324,8 @@ def main() -> None:
         "player_counts": [int(x) for x in args.player_counts.split(",")],
         "selfplay_frac": 0.6,
         "heuristic_frac": 0.3,
+        "max_steps": args.max_steps,
+        "timeout_reward": args.timeout_reward,
     }
     ctx = mp.get_context("fork")
     procs = ctx.Pool(args.workers)
@@ -385,6 +423,7 @@ def main() -> None:
             "games": sum(r["games"] for r in results),
             "mean_len": float(np.mean([r["mean_len"] for r in results])),
             "mean_reward": float(np.mean(rewards)) if rewards else 0.0,
+            "timeouts": sum(r["timeouts"] for r in results),
             "t_roll": round(t_roll, 1),
             "t_total": round(time.time() - t0, 1),
             **{k: round(v, 4) for k, v in stats.items()},
@@ -402,6 +441,10 @@ def main() -> None:
                 rec[f"eval_{np_}p_vs_heur"] = round(float(np.mean([e["win_rate"] for e in ev])), 4)
                 rec[f"eval_{np_}p_score"] = round(float(np.mean([e["mean_score"] for e in ev])), 4)
                 rec[f"eval_{np_}p_illegal"] = round(float(np.mean([e["illegal_loss_rate"] for e in ev])), 4)
+            sl = procs.map(selfplay_len_worker, [(w, 2, 6, 99 * it + c) for c in range(chunks)])
+            all_lens = sorted(x for r in sl for x in r["lens"])
+            rec["selfplay_2p_median_len"] = all_lens[len(all_lens) // 2]
+            rec["selfplay_2p_capped"] = round(sum(x >= 3000 for x in all_lens) / len(all_lens), 3)
             np.savez(out / f"actor_{it:05d}.npz", **w)
             np.savez(out / "actor_latest.npz", **w)
             torch.save(

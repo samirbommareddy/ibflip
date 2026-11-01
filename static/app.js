@@ -448,7 +448,8 @@ function drawLive(live) {
     const off = (i - (shown.length - 1)) * 16;
     return cardHTML(c, { cls: aceOne.has(c) ? "ace-one" : "", extra: `style="transform: translateX(${off}%) rotate(${rot(c)}deg)"` });
   }).join("");
-  $("#liveLabel").innerHTML = live.length ? `Live <b>${live.length}</b>` : "Live";
+  const by = live.length && S.lastActor !== null && S.lastActor !== undefined ? ` · ${S.lastActor === S.seat ? "you" : esc(S.room?.seats[S.lastActor]?.name ?? "")}` : "";
+  $("#liveLabel").innerHTML = live.length ? `Live <b>${live.length}</b>${by}` : "Live";
 }
 
 function targetText(g) {
@@ -685,6 +686,7 @@ async function animateEvents(events, prev, next) {
         const src = findCardEl(who, e.card);
         const from = rectOf(src) || rectOf(seatAnchor(who, e.source === "face_up" ? "slots" : "hand"));
         Sound.snap();
+        S.lastActor = who;
         await fly(from, livePileTargetRect(), e.card, { dur: who === S.seat ? 300 : 420, rotateTo: rot(e.card), hideSource: src });
         pushLive(e.card);
         break;
@@ -737,6 +739,7 @@ async function animateEvents(events, prev, next) {
         const from = rectOf($("#drawPile"));
         Sound.slide();
         if (e.ok) {
+          S.lastActor = who;
           await fly(from, livePileTargetRect(), e.card, { dur: 460, rotateTo: rot(e.card) });
           pushLive(e.card);
           toast(`${nameOf(who)} ${verb(who, "flip", "flips")} <b>${short(e.card)}</b> off the deck — it plays!`);
@@ -753,6 +756,7 @@ async function animateEvents(events, prev, next) {
         const hideSrc = slot?.querySelector(".card.down");
         if (e.ok) {
           Sound.snap();
+          S.lastActor = who;
           await fly(from, livePileTargetRect(), e.card, { dur: 520, rotateTo: rot(e.card), hideSource: hideSrc });
           pushLive(e.card);
         } else {
