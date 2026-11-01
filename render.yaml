@@ -5,5 +5,8 @@ services:
     plan: free
     autoDeploy: true
     healthCheckPath: /health
+    # Only redeploy (which restarts the server and drops in-memory rooms) for backend changes.
+    buildFilter:
+      paths: ["src/**", "pyproject.toml", "uv.lock", "render.yaml"]
     buildCommand: pip install uv && uv sync --frozen
     startCommand: uv run uvicorn ibflip_web.main:app --host 0.0.0.0 --port $PORT
