@@ -62,14 +62,28 @@ trained purely by self-play (PPO):
 `src/ibflip/ai/search.py` holds an experimental determinized search; with cheap
 playouts it played worse than the policy alone, so Shark doesn't use it.
 
-Benchmark (`scripts/evaluate.py`, 400 games each, win rate vs fair share):
+Training went in rounds. Each round trains against the current champion (a
+frozen copy in the league) and a challenger is only promoted if it wins a
+head-to-head of 6000 games per table size per direction (`modal run
+scripts/modal_train.py::compare`). The shipped model vs the first champion
+(score difference, >0 = shipped model stronger, s.e. ~0.01):
+
+| 2p | 3p | 4p | 5p | mean |
+|---|---|---|---|---|
+| +0.218 | +0.059 | +0.015 | +0.003 | +0.074 |
+
+Against the baseline bots (`scripts/evaluate.py`, 1000 games each, win rate
+with fair share in brackets):
 
 | Players | Shark alone vs heuristic bots | Shark alone vs random bots | Heuristic bot alone vs Sharks |
 |---|---|---|---|
-| 2 | 70% (50%) | 82% | 7% |
-| 3 | 39% (33%) | 75% | 12% |
-| 4 | 28.5% (25%) | 54% | 16% |
-| 5 | 18% (20%) | 32% | 14.5% |
+| 2 | 74% (50%) | 80% | 5% |
+| 3 | 43% (33%) | 79% | 10.5% |
+| 4 | 25% (25%) | 56% | 15% |
+| 5 | 19% (20%) | 37% | 16% |
+
+Bigger tables leave less room for skill: the game ends at the first finisher,
+so 4–5 player games are short and dominated by the deal.
 
 Train (needs torch; not a runtime dependency):
 
