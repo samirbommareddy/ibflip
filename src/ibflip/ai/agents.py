@@ -44,6 +44,29 @@ KEEP_VALUE = {
 KEEP_BY_INDEX = [KEEP_VALUE[Rank(i)] for i in range(13)]
 
 
+class RepetitionGuard:
+    """Detects when a bot keeps reaching the same position (e.g. 4-loop
+    ping-pong between deterministic bots) so it can vary its play."""
+
+    def __init__(self) -> None:
+        self.seen: dict[tuple, int] = {}
+
+    def count(self, engine: IBFlipEngine) -> int:
+        st = engine.state
+        me = st.players[st.current_player]
+        key = (
+            st.current_player,
+            tuple(sorted(RANK_INDEX_BY_ID[c] for c in me.hand)),
+            tuple(RANK_INDEX_BY_ID[c] for c in st.live_cards[-4:]),
+            len(st.live_cards),
+            tuple(len(p.hand) for p in st.players),
+        )
+        if len(self.seen) > 50_000:
+            self.seen.clear()
+        self.seen[key] = self.seen.get(key, 0) + 1
+        return self.seen[key]
+
+
 def _pick_card(engine: IBFlipEngine, mapping: dict[int, list[int]], compact: int, rng: random.Random) -> int:
     return rng.choice(mapping[compact])
 
@@ -87,12 +110,15 @@ class HeuristicAgent:
 
     def __init__(self, seed: int | None = None) -> None:
         self.rng = random.Random(seed)
+        self.guard = RepetitionGuard()
 
     def fix(self, engine: IBFlipEngine, player_index: int) -> None:
         heuristic_fix(engine, player_index)
 
     def choose(self, engine: IBFlipEngine) -> int:
         mask, mapping = compact_legal(engine)
+        if self.guard.count(engine) > 2:
+            return self.rng.choice(engine.get_legal_action_indices())
         return _pick_card(engine, mapping, self.choose_compact(engine, mask), self.rng)
 
     def choose_compact(self, engine: IBFlipEngine, mask: np.ndarray) -> int:
@@ -193,17 +219,43 @@ class MLPPolicy:
 DEFAULT_MODEL_PATH = Path(__file__).with_name("model.npz")
 
 
+def loses_immediately(engine: IBFlipEngine, compact: int, mapping: dict[int, list[int]]) -> bool:
+    """Would this move (closing the group if needed) make the mover lose now?
+
+    Uses only information the mover has: their own cards and public state.
+    Moves that depend on hidden randomness (flipping a face-down card or the
+    deck) are never flagged.
+    """
+    if compact in (A_FACE_DOWN, A_REVEAL):
+        return False
+    me = engine.state.current_player
+    sim = engine.clone()
+    sim.record_events = False
+    sim.step(mapping[compact][0], validate=False)
+    if sim.state.turn_context.open_group_rank is not None and sim.state.current_player == me:
+        sim_mask, sim_map = compact_legal(sim)
+        if sim_mask[A_END_GROUP] and compact != A_END_GROUP:
+            # Only flag if *every* way of continuing loses; closing now is one option.
+            sim.step(sim_map[A_END_GROUP][0], validate=False)
+    return sim.state.loser == me
+
+
 class NeuralAgent:
-    """Plays the self-play trained policy. ``temperature=0`` is greedy."""
+    """Plays the self-play trained policy. ``temperature=0`` is greedy.
+
+    ``safe=True`` vetoes moves that lose on the spot (e.g. finishing on a 2,
+    flipping four 8s) when an alternative exists.
+    """
 
     name = "neural"
 
-    def __init__(self, path: str | Path = DEFAULT_MODEL_PATH, temperature: float = 0.0, seed: int | None = None) -> None:
-        self.policy = MLPPolicy(path)
+    def __init__(self, path: str | Path = DEFAULT_MODEL_PATH, temperature: float = 0.0, seed: int | None = None, safe: bool = True) -> None:
+        self.policy = path if isinstance(path, MLPPolicy) else MLPPolicy(path)
+        self.safe = safe
         self.temperature = temperature
         self.rng = random.Random(seed)
         self.np_rng = np.random.default_rng(seed)
-        self.fallback = HeuristicAgent(seed)
+        self.guard = RepetitionGuard()
 
     def fix(self, engine: IBFlipEngine, player_index: int) -> None:
         heuristic_fix(engine, player_index)
@@ -215,10 +267,21 @@ class NeuralAgent:
             compact = int(legal[0])
         else:
             logits = self.policy.logits(encode(engine, engine.state.current_player), mask)
-            if self.temperature <= 0:
+            if self.safe:
+                for a in np.argsort(-logits):
+                    if not mask[a]:
+                        break
+                    if loses_immediately(engine, int(a), mapping):
+                        logits[a] = -1e8  # still preferable to illegal, but last resort
+                    else:
+                        break
+            temperature = self.temperature
+            if self.guard.count(engine) > 2:
+                temperature = max(temperature, 1.5)  # break repetition loops
+            if temperature <= 0:
                 compact = int(np.argmax(logits))
             else:
-                z = logits / self.temperature
+                z = logits / temperature
                 z = z - z.max()
                 p = np.exp(z) * mask
                 p /= p.sum()
