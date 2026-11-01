@@ -94,6 +94,7 @@ def rollout_worker(args) -> dict:
     prng = random.Random(seed)
     learner = MLPPolicy(weights)
     pool_policies = [MLPPolicy(w) for w in pool]
+    champion = MLPPolicy(cfg["champion"]) if cfg.get("champion") is not None else None
     heuristic = HeuristicAgent(seed)
 
     buf = {k: [] for k in ("obs", "priv", "mask", "act", "logp", "ret_idx")}
@@ -110,7 +111,14 @@ def rollout_worker(args) -> dict:
         engine.reset()
         # seat assignment
         seats: list = ["L"] * num_players
-        if prng.random() > cfg["selfplay_frac"]:
+        roll = prng.random()
+        c_frac = cfg["champion_frac"] if champion is not None else 0.0
+        league_frac = (1.0 - c_frac) * (1.0 - cfg["selfplay_frac"])
+        if roll < c_frac:
+            # One learner (sometimes two) against a table of the champion.
+            heroes = set(prng.sample(range(num_players), 1 if num_players < 4 or prng.random() < 0.7 else 2))
+            seats = ["L" if i in heroes else champion for i in range(num_players)]
+        elif roll < c_frac + league_frac:
             hero = prng.randrange(num_players)
             for i in range(num_players):
                 if i == hero:
@@ -202,6 +210,24 @@ def selfplay_len_worker(args) -> dict:
             steps += 1
         lens.append(steps)
     return {"lens": lens}
+
+
+def h2h_worker(args) -> dict:
+    """Mean score of ONE `hero` seat vs a table of `villain` (deployed agent logic)."""
+    hero_w, villain_w, num_players, games, seed = args
+    from ibflip.ai.agents import NeuralAgent
+    from ibflip.ai.arena import play_game
+
+    hero_p, villain_p = MLPPolicy(hero_w), MLPPolicy(villain_w)
+    rng = random.Random(seed)
+    total, wins = 0.0, 0
+    for g in range(games):
+        seat = g % num_players
+        agents = [NeuralAgent(hero_p if i == seat else villain_p, seed=rng.randrange(2**31)) for i in range(num_players)]
+        result = play_game(agents, seed=rng.randrange(2**31), max_steps=1500)
+        total += score(result, seat, num_players)
+        wins += result["winner"] == seat
+    return {"score": total, "wins": wins, "games": games}
 
 
 def eval_worker(args) -> dict:
@@ -298,6 +324,11 @@ def main() -> None:
     parser.add_argument("--async-rollouts", type=int, default=1)
     parser.add_argument("--player-counts", default="2,2,3,3,4,4,5,5")
     parser.add_argument("--max-steps", type=int, default=1000)
+    parser.add_argument("--champion", default=None, help="actor .npz to train against and evaluate head-to-head")
+    parser.add_argument("--champion-frac", type=float, default=0.35)
+    parser.add_argument("--h2h-games", type=int, default=2000, help="games per player count per direction")
+    parser.add_argument("--lr-end", type=float, default=None, help="linearly decay LR to this by the deadline")
+    parser.add_argument("--init-actor", default=None, help="actor .npz to initialise from")
     parser.add_argument("--timeout-reward", type=float, default=-1.0)
     args = parser.parse_args()
 
@@ -320,11 +351,25 @@ def main() -> None:
         pool = ck.get("pool", [])
         start_iter = ck.get("iter", 0)
 
+    champion_w = dict(np.load(args.champion)) if args.champion else None
+    if champion_w is not None:
+        champion_w = {k: v.astype(np.float32) for k, v in champion_w.items()}
+    if args.init_actor:
+        init = np.load(args.init_actor)
+        linears = [m for m in actor.trunk if hasattr(m, "weight")]
+        with torch.no_grad():
+            for i, lin in enumerate(linears):
+                lin.weight.copy_(torch.from_numpy(init[f"w{i}"].astype(np.float32).T))
+                lin.bias.copy_(torch.from_numpy(init[f"b{i}"].astype(np.float32)))
+            actor.head.weight.copy_(torch.from_numpy(init["pw"].astype(np.float32).T))
+            actor.head.bias.copy_(torch.from_numpy(init["pb"].astype(np.float32)))
     cfg = {
         "player_counts": [int(x) for x in args.player_counts.split(",")],
         "selfplay_frac": 0.6,
         "heuristic_frac": 0.3,
         "max_steps": args.max_steps,
+        "champion": champion_w,
+        "champion_frac": args.champion_frac,
         "timeout_reward": args.timeout_reward,
     }
     ctx = mp.get_context("fork")
@@ -343,8 +388,13 @@ def main() -> None:
     # Rollouts for iteration k+1 run while the learner updates on k (one
     # iteration of policy lag; PPO's ratio uses the behaviour log-probs).
     pending = launch()
+    t_start = time.time()
     while time.time() < deadline:
         t0 = time.time()
+        if args.lr_end is not None:
+            frac = min(1.0, (t0 - t_start) / max(1.0, deadline - t_start))
+            for group in opt.param_groups:
+                group["lr"] = args.lr + (args.lr_end - args.lr) * frac
         results = pending.get()
         t_roll = time.time() - t0
         pending = launch() if args.async_rollouts else None
@@ -434,17 +484,23 @@ def main() -> None:
             pool = pool[-24:]
         if it % args.eval_every == 0:
             w = export_actor(actor)
-            chunks = max(1, args.workers // 2)
-            per_chunk = max(4, args.eval_games // chunks)
-            for np_ in (2, 4):
-                ev = procs.map(eval_worker, [(w, np_, per_chunk, 7919 * it + 31 * c + np_, "heuristic") for c in range(chunks)])
-                rec[f"eval_{np_}p_vs_heur"] = round(float(np.mean([e["win_rate"] for e in ev])), 4)
-                rec[f"eval_{np_}p_score"] = round(float(np.mean([e["mean_score"] for e in ev])), 4)
-                rec[f"eval_{np_}p_illegal"] = round(float(np.mean([e["illegal_loss_rate"] for e in ev])), 4)
-            sl = procs.map(selfplay_len_worker, [(w, 2, 6, 99 * it + c) for c in range(chunks)])
-            all_lens = sorted(x for r in sl for x in r["lens"])
-            rec["selfplay_2p_median_len"] = all_lens[len(all_lens) // 2]
-            rec["selfplay_2p_capped"] = round(sum(x >= 3000 for x in all_lens) / len(all_lens), 3)
+            chunks = max(1, args.workers)
+            if champion_w is not None:
+                combined = []
+                for np_ in (2, 3, 4, 5):
+                    per_h2h = max(2, args.h2h_games // chunks)
+                    a = procs.map(h2h_worker, [(w, champion_w, np_, per_h2h, 1000003 * it + 31 * c + np_) for c in range(chunks)])
+                    b = procs.map(h2h_worker, [(champion_w, w, np_, per_h2h, 2000003 * it + 31 * c + np_) for c in range(chunks)])
+                    sa = sum(x["score"] for x in a) / sum(x["games"] for x in a)
+                    sb = sum(x["score"] for x in b) / sum(x["games"] for x in b)
+                    rec[f"h2h_{np_}p"] = round((sa - sb) / 2, 4)  # >0: candidate beats champion
+                    combined.append((sa - sb) / 2)
+                rec["h2h_mean"] = round(float(np.mean(combined)), 4)
+            else:
+                per_chunk = max(4, args.eval_games // chunks)
+                for np_ in (2, 4):
+                    ev = procs.map(eval_worker, [(w, np_, per_chunk, 7919 * it + 31 * c + np_, "heuristic") for c in range(chunks)])
+                    rec[f"eval_{np_}p_score"] = round(float(np.mean([e["mean_score"] for e in ev])), 4)
             np.savez(out / f"actor_{it:05d}.npz", **w)
             np.savez(out / "actor_latest.npz", **w)
             torch.save(
