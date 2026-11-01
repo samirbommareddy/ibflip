@@ -35,8 +35,14 @@ def train(hours: float, name: str, extra: str = "") -> str:
         sys.executable, "/app/scripts/train_ppo.py", "--out", out, "--hours", str(hours),
         "--workers", str(CPU * 2 - 4), "--threads", str(CPU), *extra.split(),
     ]
-    if Path(out, "checkpoint.pt").exists() and "--resume" not in extra:
-        cmd += ["--resume", f"{out}/checkpoint.pt"]
+    if Path(out, "checkpoint.pt").exists():
+        # Restarted (e.g. preempted) run: continue from our own checkpoint,
+        # never from the original --resume source.
+        parts = extra.split()
+        if "--resume" in parts:
+            i = parts.index("--resume")
+            del parts[i : i + 2]
+        cmd = cmd[: cmd.index("--threads") + 2] + parts + ["--resume", f"{out}/checkpoint.pt"]
     print("running", " ".join(cmd), flush=True)
     stop = threading.Event()
 
