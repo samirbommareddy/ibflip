@@ -69,7 +69,9 @@ body { background: var(--paper); color: var(--line); }
 .seg span { min-width: 80px; font-weight: 700; }
 .seg .btn { border: var(--rule) solid var(--line); background: var(--paper); }
 .seg .btn[aria-pressed="true"] { background: var(--line); color: var(--paper); }
-.previews iframe { border: var(--rule) solid var(--line); max-width: 100%; background: var(--paper); }
+.spacing { grid-template-columns: 1fr; }
+.previews .frame { width: 720px; height: 450px; max-width: 100%; overflow: hidden; border: var(--rule) solid var(--line); }
+.previews iframe { width: 1440px; height: 900px; border: 0; transform: scale(.5); transform-origin: 0 0; background: var(--paper); }
 
 .picks { padding: 28px 0; }
 .picks h2 { margin: 0 0 10px; font-size: 24px; }
