@@ -422,7 +422,9 @@ body::before {
 }
 .hand .card { margin: 0 calc(var(--card-w) * var(--overlap, -0.18)); transform-origin: 50% 140%; transform: translateY(var(--arc, 0px)) rotate(var(--rot, 0deg)) translateY(var(--lift, 0px)); transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .2s ease, filter .2s, margin .22s cubic-bezier(.2,.8,.2,1); }
 .hand .card.legal { cursor: pointer; --lift: -10px; box-shadow: 0 0 0 3px var(--accent), 0 10px 26px rgba(0,0,0,.45), 0 0 26px rgba(242,193,78,.45); }
-@media (hover: hover) { .hand .card.legal:hover { --lift: -22px; } }
+/* Hover must not move the card: a lift that slides the card out from under
+   the pointer makes it flicker between hovered and not near its bottom edge. */
+@media (hover: hover) { .hand .card.legal:hover { filter: brightness(1.05); box-shadow: 0 0 0 3px #ffe08a, 0 12px 28px rgba(0,0,0,.5), 0 0 34px rgba(242,193,78,.75); } }
 .hand .card.pending { --lift: -30px; filter: brightness(1.04); }
 .hand .card.dim { filter: brightness(.8) saturate(.75); }
 .hand .card.selected { --lift: -34px; box-shadow: 0 0 0 3px #7dd3fc, 0 0 26px rgba(125,211,252,.6); }
@@ -430,7 +432,7 @@ body::before {
 .slot .card { transition: transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s; }
 .slot .card.fixable { cursor: pointer; }
 .slot .card.legal, .slot .card.target { cursor: pointer; box-shadow: 0 0 0 3px var(--accent), 0 0 20px rgba(242,193,78,.55); }
-@media (hover: hover) { .slot .card.legal:hover { transform: translateY(-6px); } }
+@media (hover: hover) { .slot .card.legal:hover { filter: brightness(1.05); box-shadow: 0 0 0 3px #ffe08a, 0 0 28px rgba(242,193,78,.8); } }
 .slot .card.down.legal { cursor: pointer; }
 .slot .card.target { box-shadow: 0 0 0 3px #7dd3fc, 0 0 20px rgba(125,211,252,.6); }
 
