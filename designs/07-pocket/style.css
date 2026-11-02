@@ -1,0 +1,40 @@
+/* Pocket: a four-shade handheld screen. Pixel type, hard 2px edges, no gradients, no blur. */
+:root {
+  --c0: #0f380f; --c1: #306230; --c2: #8bac0f; --c3: #9bbc0f;
+  --bg: #9bbc0f; --ink: #0f380f; --accent: #0f380f; --on-accent: #9bbc0f;
+  --face: #c4d86a; --black: #0f380f; --red: #306230;
+  --back: #306230; --back-ink: #9bbc0f;
+  --font: "VT323", monospace; --card-font: "Silkscreen", monospace; --rank-weight: 400;
+  --card-border: 2px solid #0f380f; --card-radius: 0;
+  --btn-bg: #8bac0f; --btn-radius: 0; --input-bg: #c4d86a;
+  --avatar: #8bac0f; --lift: -8px; --blocked-opacity: .4;
+}
+body { font-size: 21px; background: #9bbc0f; image-rendering: pixelated; }
+.card { box-shadow: 3px 3px 0 #306230; }
+.card .pip { font-family: system-ui; }
+.card i { font-family: system-ui; }
+.card.red .pip { opacity: .8; }
+.card.back { background: #306230 repeating-conic-gradient(#306230 0 25%, #0f380f 0 50%) 0 0 / 8px 8px; border: 2px solid #0f380f; }
+.card.back span { background: #306230; padding: 0 3px; font-family: "Silkscreen", monospace; font-weight: 400; }
+.card.selected { background: #9bbc0f; }
+.card.playable::after { content: ""; position: absolute; inset: -6px; border: 2px dashed #0f380f; }
+.card { transition: none; }
+.topbar { border: 2px solid #0f380f; padding: 4px 8px; background: #8bac0f; }
+.topbar .icon { border-radius: 0; border: 2px solid #0f380f; }
+.topbar .phase { font-weight: 400; }
+.seat { border: 2px solid #0f380f; padding: 6px 10px; background: #8bac0f; }
+.seat .avatar { border-radius: 0; border: 2px solid #0f380f; font-family: "Silkscreen"; }
+.seat .badge { border-radius: 0; background: #0f380f; color: #9bbc0f; }
+.center { border: 2px solid #0f380f; padding: 16px 8px; background: #8bac0f; }
+.pile .label { opacity: 1; }
+.caption::before { content: "▶ "; }
+.turn-banner { background: #0f380f; color: #9bbc0f; padding: 0 10px; font-weight: 400; }
+.btn, .choice span { border: 2px solid #0f380f; box-shadow: 3px 3px 0 #306230; font-weight: 400; }
+.choice input:checked + span { background: #0f380f; color: #9bbc0f; }
+.field input { border: 2px solid #0f380f; border-radius: 0; }
+.brand h1 { font-family: "Silkscreen", monospace; font-weight: 400; font-size: clamp(42px, 11vw, 80px); line-height: 1; text-shadow: 4px 4px 0 #306230; }
+.tagline { opacity: 1; }
+.result-card { border: 2px solid #0f380f; background: #8bac0f; padding: 22px 18px; box-shadow: 6px 6px 0 #306230; }
+.result-card h2 { font-family: "Silkscreen", monospace; font-weight: 400; font-size: 28px; }
+.standings li { border-color: #306230; }
+.standings .you .nm::before { content: "▶ "; }

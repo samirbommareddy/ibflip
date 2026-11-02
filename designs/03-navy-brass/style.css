@@ -1,0 +1,33 @@
+/* Navy and brass: a quiet members' card room. */
+:root {
+  --bg: #14213b; --ink: #e6e9f0; --accent: #c8a45a; --on-accent: #1a1406;
+  --face: #fbf8ef; --black: #1b2232; --red: #a8323a;
+  --back: #22355c; --back-ink: #c8a45a;
+  --font: "DM Sans", system-ui, sans-serif;
+  --card-font: "DM Serif Display", Georgia, serif; --rank-weight: 400;
+  --card-border: 1px solid rgba(200, 164, 90, .5); --card-radius: 5px;
+  --card-shadow: 0 2px 6px rgba(5, 10, 25, .45);
+  --btn-bg: rgba(255,255,255,.07); --btn-radius: 3px; --input-bg: #0f1a30;
+  --avatar: #22355c;
+}
+body { background: #14213b; }
+.card.back { background: #22355c repeating-linear-gradient(90deg, transparent 0 7px, rgba(200,164,90,.12) 7px 8px); border: 1px solid #c8a45a; }
+.card.back span { font-family: "DM Serif Display", serif; font-weight: 400; }
+.card.playable { border-color: #c8a45a; box-shadow: 0 0 0 1px #c8a45a, 0 2px 6px rgba(5,10,25,.45); }
+.center { padding: 28px 12px; border-top: 1px solid rgba(200,164,90,.25); border-bottom: 1px solid rgba(200,164,90,.25); }
+.pile .label { color: #c8a45a; opacity: 1; }
+.seat .avatar { color: #c8a45a; border: 1px solid rgba(200,164,90,.5); }
+.seat .badge { background: transparent; color: #c8a45a; border: 1px solid #c8a45a; border-radius: 3px; }
+.topbar .icon { border: 1px solid rgba(200,164,90,.45); color: #c8a45a; }
+.topbar .phase { font-weight: 500; }
+.caption b { color: #c8a45a; font-weight: 600; }
+.turn-banner { font-family: "DM Serif Display", serif; font-weight: 400; font-size: 1.25em; color: #c8a45a; }
+.btn.primary { letter-spacing: .02em; }
+.field input { border: 1px solid rgba(200,164,90,.35); }
+.choice span { border: 1px solid rgba(255,255,255,.1); }
+.brand h1 { font-family: "DM Serif Display", serif; font-weight: 400; font-size: clamp(54px, 11vw, 92px); color: #f4ead2; }
+.tagline { color: #c8a45a; opacity: 1; }
+.result-card { padding: 32px 28px; border: 1px solid rgba(200,164,90,.4); background: #182845; }
+.result-card h2 { font-family: "DM Serif Display", serif; font-weight: 400; font-size: 38px; color: #f4ead2; }
+.standings li { border-color: rgba(200,164,90,.2); }
+.standings .pl { color: #c8a45a; }

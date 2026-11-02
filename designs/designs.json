@@ -1,0 +1,52 @@
+[
+ {
+  "slug": "01-quiet-felt",
+  "name": "Quiet felt",
+  "desc": "A flat green table with nothing extra: no rail, no glow, plain white cards."
+ },
+ {
+  "slug": "02-notepad",
+  "name": "Notepad",
+  "desc": "Blue ballpoint on graph paper, like a scorepad on the kitchen table."
+ },
+ {
+  "slug": "03-navy-brass",
+  "name": "Navy and brass",
+  "desc": "A members' card room: deep navy, ivory cards, brass details."
+ },
+ {
+  "slug": "04-lilac-pop",
+  "name": "Lilac pop",
+  "desc": "A chunky, friendly mobile game: thick outlines, solid shadows, big tap targets."
+ },
+ {
+  "slug": "05-swiss",
+  "name": "Swiss",
+  "desc": "No table at all. A strict grid of rows, one red, giant numerals."
+ },
+ {
+  "slug": "06-game-night",
+  "name": "Game night",
+  "desc": "A 1970s board-game box: mustard, brown and orange, striped card backs."
+ },
+ {
+  "slug": "07-pocket",
+  "name": "Pocket",
+  "desc": "A four-shade handheld screen with pixel type and hard edges."
+ },
+ {
+  "slug": "08-indigo",
+  "name": "Indigo",
+  "desc": "Indigo-dyed cloth and pale paper, with wave-patterned card backs."
+ },
+ {
+  "slug": "09-big-numbers",
+  "name": "Big numbers",
+  "desc": "Cards reduced to one huge numeral each, readable from across the room."
+ },
+ {
+  "slug": "10-picnic",
+  "name": "Picnic",
+  "desc": "Daylight: a blue gingham cloth, soft paper cards, rounded everything."
+ }
+]

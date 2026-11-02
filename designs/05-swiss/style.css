@@ -1,0 +1,83 @@
+/* Swiss: no felt, no table metaphor. Players are rows on a grid; cards are rectangles with one big numeral. */
+:root {
+  --bg: #ffffff; --ink: #111111; --accent: #e3120b; --on-accent: #fff;
+  --face: #ffffff; --black: #111; --red: #e3120b;
+  --back: #111111; --back-ink: #fff;
+  --font: "Archivo", "Helvetica Neue", Arial, sans-serif; --rank-weight: 800;
+  --card-border: 2px solid #111; --card-radius: 2px;
+  --btn-bg: #f1f1f1; --btn-radius: 0; --input-bg: #fff;
+  --avatar: transparent; --gap: 0px; --pad: 0; --lift: -10px;
+}
+.card .idx, .card .idx2 { display: none; }
+.card .pip { font-size: calc(var(--w) * .2); align-items: end; justify-items: end; padding: 6%; }
+.card::before { content: attr(data-rank); position: absolute; left: 7%; top: 2%; font-size: calc(var(--w) * .56); font-weight: 800; letter-spacing: -.04em; line-height: 1; }
+.card.back::before, .card.xs::before { content: none; }
+.card.xs .idx { display: flex; }
+.card.back span { font-size: calc(var(--w) * .18); }
+.card.selected { background: #ffe9e8; }
+.card.playable { border-color: #111; }
+.card.blocked { opacity: .25; }
+
+/* the grid: every block is a row with a label column on the left */
+.game { display: block; padding: 0; }
+.topbar { display: grid; grid-template-columns: 48px auto 1fr 48px; border-bottom: 2px solid #111; padding: 0 8px; min-height: 52px; }
+.topbar .icon { border-radius: 0; }
+.topbar .phase { text-align: left; font-weight: 800; }
+.topbar .room { font-size: .85em; color: #777; }
+.opponents { display: block; }
+.seat, .center, .me { display: grid; grid-template-columns: minmax(96px, 22%) 1fr; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #111; }
+.seat .who { flex-direction: column; align-items: flex-start; gap: 0; }
+.seat .avatar { display: none; }
+.seat .name { font-weight: 800; font-size: 1.15em; }
+.seat .level { font-size: .8em; color: #777; opacity: 1; }
+.seat .badge { background: #e3120b; border-radius: 0; margin-top: 4px; }
+.holdings { flex-direction: row; justify-content: flex-start; align-items: center; gap: 18px; flex-wrap: wrap; }
+.hand-count { flex-direction: column; gap: 0; }
+.hand-count .n { font-size: 1.8em; font-weight: 800; line-height: 1; }
+.hand-count .l { font-size: .75em; color: #777; }
+.table-cards { flex-direction: row; gap: 10px; }
+.table-cards .ups { margin: 0; }
+.seat.out { opacity: .4; }
+.center { grid-template-columns: repeat(3, auto) 1fr; justify-content: start; gap: 24px; background: #f6f6f6; }
+.pile { align-items: flex-start; }
+.pile .label { font-size: .8em; color: #555; opacity: 1; }
+.caption { grid-column: 1 / -1; text-align: left; font-size: 1.05em; }
+.caption b { color: #e3120b; }
+.me { grid-template-columns: 1fr; justify-items: start; border-bottom: 0; }
+.my-table { flex-direction: row; gap: 10px; }
+.my-table .ups { margin: 0; }
+.hand { justify-content: flex-start; flex-wrap: wrap; padding-top: 8px; }
+.turn-banner { font-size: 1.6em; font-weight: 800; letter-spacing: -.02em; }
+.actions { justify-content: flex-start; }
+.btn { border: 2px solid #111; background: #fff; font-weight: 700; }
+.btn.primary { border-color: #e3120b; }
+@media (min-width: 900px) {
+  .game { display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "top top" "opps me" "center me"; grid-template-rows: auto auto 1fr; gap: 0; }
+  .opponents { display: block; border-right: 2px solid #111; }
+  .seat-1, .seat-2, .seat-3 { grid-area: auto; }
+  .center { border-right: 2px solid #111; align-content: start; align-self: start; }
+  .me { align-content: start; }
+}
+/* home + results */
+.home { align-items: stretch; justify-content: flex-start; max-width: 560px; margin: 0 auto; padding-top: 10vh; }
+.brand { text-align: left; border-bottom: 2px solid #111; padding-bottom: 12px; }
+.brand h1 { font-size: clamp(64px, 16vw, 132px); font-weight: 800; letter-spacing: -.05em; line-height: .85; }
+.tagline { opacity: 1; color: #555; }
+.setup { width: 100%; }
+.field input { border: 2px solid #111; }
+.choice span { border: 2px solid #111; background: #fff; }
+.choice input:checked + span { background: #111; color: #fff; }
+.deal { background: #e3120b; border: 0; font-size: 1.25em; }
+.result-card { text-align: left; }
+.result-card h2 { font-size: clamp(40px, 9vw, 64px); font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+.standings li { border-bottom: 1px solid #111; }
+.standings .pl { font-size: 1.3em; }
+.standings .you .pl { color: #e3120b; }
+@media (max-width: 899px) {
+  .seat .ups .card, .seat .downs .card { --w: 36px; }
+  .seat .ups .card .idx { display: none; }
+  .table-cards .ups { margin: 0; }
+  .seat, .center, .me { padding: 10px 12px; }
+  .seat { grid-template-columns: 64px 1fr; }
+  .holdings { gap: 10px; }
+}

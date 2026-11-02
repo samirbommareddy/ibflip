@@ -1,0 +1,39 @@
+/* Notepad: the game as it'd look drawn in blue biro on a squared scorepad. */
+:root {
+  --bg: #f7f9fc; --ink: #1d3a8a; --accent: #1d3a8a; --on-accent: #fff;
+  --face: #ffffff; --black: #1d3a8a; --red: #c8323a;
+  --back: #ffffff; --back-ink: #1d3a8a;
+  --font: "Patrick Hand", "Comic Sans MS", cursive;
+  --card-font: "Kalam", cursive;
+  --card-border: 2px solid #1d3a8a; --card-radius: 6px 9px 7px 10px;
+  --btn-bg: transparent; --btn-radius: 8px 12px 9px 11px; --input-bg: transparent;
+  --avatar: transparent; --blocked-opacity: .35;
+}
+body {
+  font-size: 19px;
+  background-color: #f7f9fc;
+  background-image: linear-gradient(#dfe7f5 1px, transparent 1px), linear-gradient(90deg, #dfe7f5 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.card { --card-shadow: none; }
+.card.back { border: 2px solid #1d3a8a; background-image: repeating-linear-gradient(45deg, transparent 0 5px, rgba(29,58,138,.55) 5px 6px), repeating-linear-gradient(-45deg, transparent 0 5px, rgba(29,58,138,.35) 5px 6px); }
+.card:nth-child(odd) { rotate: -1.2deg; }
+.card:nth-child(even) { rotate: .9deg; }
+.card.playable { border-width: 2.5px; }
+.card.selected { box-shadow: 0 0 0 3px #f5d84a; }
+.card .tag { font-family: "Patrick Hand", cursive; opacity: .9; }
+.seat .avatar { border: 2px solid currentColor; }
+.btn, .choice span { border: 2px solid #1d3a8a; }
+.btn.primary { background: #1d3a8a; }
+.choice input:checked + span { background: #1d3a8a; color: #fff; }
+.field input { border: 0; border-bottom: 2px solid #1d3a8a; border-radius: 0; padding-left: 2px; }
+.topbar .icon { border: 2px solid #1d3a8a; }
+.caption { font-size: 1.05em; }
+.caption b { text-decoration: underline wavy #c8323a 1.5px; text-underline-offset: 4px; }
+.turn-banner { display: inline-block; padding: 0 6px; background: linear-gradient(transparent 55%, #f5d84a 55% 90%, transparent 90%); }
+.seat .badge { background: none; color: #c8323a; border: 2px solid #c8323a; rotate: -4deg; }
+.brand h1 { font-family: "Kalam", cursive; font-size: clamp(56px, 12vw, 96px); line-height: 1; }
+.brand h1::after { content: ""; display: block; height: 6px; margin: 2px auto 0; width: 70%; background: #c8323a; border-radius: 3px; rotate: -1.5deg; }
+.result-card h2 { font-family: "Kalam", cursive; font-size: 40px; }
+.standings li { border-color: #b9c8e6; }
+.standings .you .nm { text-decoration: underline 2px; }

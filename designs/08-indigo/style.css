@@ -1,0 +1,42 @@
+/* Indigo: pale paper and indigo-dyed cloth. Calm, rounded type; wave-pattern backs; a yellow highlight for your turn. */
+:root {
+  --bg: #eef1f6; --ink: #1e2f52; --accent: #e0b23a; --on-accent: #1e2f52;
+  --face: #fcfcfa; --black: #1e2f52; --red: #c2413b;
+  --back: #263f6d; --back-ink: #eef1f6;
+  --font: "Zen Maru Gothic", system-ui, sans-serif; --rank-weight: 900;
+  --card-border: 1px solid #c7cfde; --card-radius: 8px;
+  --card-shadow: 0 1px 0 #c7cfde;
+  --btn-bg: #e2e7f0; --btn-radius: 99px; --input-bg: #fff;
+  --avatar: #263f6d;
+}
+body { background: #eef1f6; }
+.card.back {
+  background-color: #263f6d;
+  background-image: radial-gradient(circle at 100% 150%, #263f6d 24%, #e8ecf3 25% 28%, #263f6d 29% 36%, #e8ecf3 37% 40%, #263f6d 41% 48%, transparent 49%),
+    radial-gradient(circle at 0 150%, #263f6d 24%, #e8ecf3 25% 28%, #263f6d 29% 36%, #e8ecf3 37% 40%, #263f6d 41% 48%, transparent 49%),
+    radial-gradient(circle at 50% 100%, #e8ecf3 10%, #263f6d 11% 23%, #e8ecf3 24% 30%, #263f6d 31% 43%, #e8ecf3 44% 50%, #263f6d 51% 63%, #e8ecf3 64% 71%, transparent 72%);
+  background-size: 16px 8px;
+  border: 2px solid #263f6d;
+}
+.card.back span { display: none; }
+.card.playable { border-color: #263f6d; }
+.card.selected { box-shadow: 0 0 0 3px #e0b23a; }
+.seat .avatar { color: #eef1f6; }
+.seat .badge { background: #263f6d; color: #eef1f6; }
+.center { background: #263f6d; color: #eef1f6; border-radius: 20px; padding: 26px 14px; }
+.center .card:not(.back) { border-color: transparent; }
+.pile .label { opacity: .8; }
+.caption b { color: #e0b23a; }
+.topbar .icon { background: #e2e7f0; }
+.topbar .phase { font-weight: 700; }
+.turn-banner { background: #e0b23a; padding: 2px 14px; border-radius: 99px; font-weight: 700; }
+.btn { font-weight: 700; }
+.btn.primary { background: #263f6d; color: #fff; }
+.choice input:checked + span { background: #263f6d; color: #fff; }
+.field input { border: 1px solid #c7cfde; }
+.brand h1 { font-size: clamp(54px, 12vw, 96px); font-weight: 900; color: #263f6d; letter-spacing: .02em; }
+.brand::after { content: ""; display: block; width: 72px; height: 6px; margin: 14px auto 0; border-radius: 3px; background: #e0b23a; }
+.result-card { background: #fff; border-radius: 22px; padding: 28px 22px; border: 1px solid #c7cfde; }
+.result-card h2 { font-size: 34px; font-weight: 900; color: #263f6d; }
+.standings li { border-color: #e2e7f0; }
+.standings .you { color: #263f6d; font-weight: 700; }

@@ -1,0 +1,26 @@
+/* Quiet felt: the familiar card table, with everything that isn't the game removed. */
+:root {
+  --bg: #2f6a4f; --ink: #eef5ef; --accent: #f2d27a; --on-accent: #23301f;
+  --face: #ffffff; --black: #1c2420; --red: #c4342d;
+  --back: #1f4d39; --back-ink: rgba(242, 210, 122, .55);
+  --font: "Figtree", system-ui, sans-serif;
+  --card-border: 0; --card-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+  --btn-bg: rgba(255, 255, 255, .1); --input-bg: rgba(0, 0, 0, .18);
+  --avatar: rgba(255, 255, 255, .14);
+}
+body { background: radial-gradient(120% 90% at 50% 40%, #367558 0%, #2f6a4f 55%, #285c44 100%) fixed; }
+.card.back { border: 3px solid #fff; }
+.card.sm.back { border-width: 2px; }
+.card.playable { box-shadow: 0 0 0 2px var(--accent), 0 1px 2px rgba(0,0,0,.25); }
+.topbar .icon { background: rgba(255,255,255,.08); color: var(--ink); }
+.topbar .room { opacity: .6; font-size: .85em; }
+.topbar .phase { font-weight: 600; }
+.caption { opacity: .85; }
+.caption b { color: var(--accent); }
+.turn-banner { color: var(--accent); }
+.seat .badge { background: var(--accent); }
+.field input { border: 0; color: var(--ink); }
+.brand h1 { font-size: clamp(48px, 10vw, 84px); font-weight: 800; letter-spacing: -.02em; }
+.standings li { border-color: rgba(255,255,255,.14); }
+.standings .you { color: var(--accent); }
+.result-card h2 { font-size: 34px; font-weight: 800; }

@@ -1,0 +1,37 @@
+/* Big numbers: in IB-Flip the rank is everything, so each card is one huge numeral. Slate table, yellow for "you can act". */
+:root {
+  --bg: #3c4654; --ink: #f1f3f5; --accent: #ffd23f; --on-accent: #22262c;
+  --face: #ffffff; --black: #22262c; --red: #e0453a;
+  --back: #56637a; --back-ink: rgba(255,255,255,.4);
+  --font: "Barlow Condensed", "Arial Narrow", sans-serif; --rank-weight: 800;
+  --card-border: 0; --card-radius: 6px;
+  --btn-bg: rgba(255,255,255,.1); --btn-radius: 6px; --input-bg: rgba(0,0,0,.2);
+  --avatar: rgba(255,255,255,.12);
+}
+body { font-size: 18px; background: #3c4654; }
+.card .idx, .card .idx2 { display: none; }
+.card::before { content: attr(data-rank); position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--w) * .78); font-weight: 800; line-height: 1; letter-spacing: -.04em; }
+.card .pip { inset: auto 7% 5% auto; display: block; font-size: calc(var(--w) * .2); }
+.card.back::before, .card.xs::before { content: none; }
+.card.xs .idx { display: flex; }
+.card.back span { font-size: calc(var(--w) * .2); }
+.card.playable { box-shadow: inset 0 -5px 0 #ffd23f; }
+.card.selected { box-shadow: inset 0 -5px 0 #ffd23f, 0 0 0 3px #ffd23f; }
+.card.blocked { opacity: .3; }
+.topbar .phase { font-size: 1.3em; font-weight: 700; }
+.topbar .icon { background: rgba(255,255,255,.1); }
+.seat .name { font-weight: 700; font-size: 1.15em; }
+.seat .badge { background: #ffd23f; font-weight: 700; }
+.hand-count .n { font-size: 1.6em; }
+.pile .label { font-size: .95em; text-transform: none; }
+.caption { font-size: 1.15em; }
+.caption b { color: #ffd23f; }
+.turn-banner { font-size: 1.8em; font-weight: 800; color: #ffd23f; line-height: 1; }
+.btn { font-weight: 700; font-size: 1.1em; }
+.choice input:checked + span { background: #ffd23f; }
+.field input { border: 0; }
+.brand h1 { font-size: clamp(80px, 22vw, 180px); font-weight: 800; line-height: .8; letter-spacing: -.03em; }
+.tagline { font-size: 1.2em; }
+.result-card h2 { font-size: clamp(54px, 13vw, 88px); font-weight: 800; line-height: .9; color: #ffd23f; }
+.standings li { border-color: rgba(255,255,255,.12); font-size: 1.15em; }
+.standings .pl { font-size: 1.2em; }

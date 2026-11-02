@@ -1,0 +1,38 @@
+/* Lilac pop: a cheerful phone game. Thick outlines and solid drop shadows make everything feel pressable. */
+:root {
+  --bg: #e7e0ff; --ink: #2a1a5e; --accent: #ffd447; --on-accent: #2a1a5e;
+  --face: #ffffff; --black: #2a1a5e; --red: #ff4f8b;
+  --back: #7b5cff; --back-ink: #ffffff;
+  --font: "Baloo 2", system-ui, sans-serif; --rank-weight: 800;
+  --card-border: 3px solid #2a1a5e; --card-radius: 14px;
+  --card-shadow: 0 4px 0 #2a1a5e;
+  --btn-bg: #ffffff; --btn-radius: 16px; --input-bg: #fff;
+  --avatar: #ffd447; --lift: -18px;
+}
+body { background: #e7e0ff; }
+.card.back { border: 3px solid #2a1a5e; background: #7b5cff radial-gradient(circle at 50% 50%, rgba(255,255,255,.25) 0 20%, transparent 21%) 0 0 / 14px 14px; }
+.card.back span { font-weight: 800; }
+.card.playable { background: #fffbe6; }
+.card.selected { box-shadow: 0 8px 0 #2a1a5e; }
+.card.blocked { filter: grayscale(1); }
+.btn, .choice span { border: 3px solid #2a1a5e; box-shadow: 0 4px 0 #2a1a5e; font-weight: 800; }
+.btn:active, .choice span:active { transform: translateY(3px); box-shadow: 0 1px 0 #2a1a5e; }
+.btn.primary { background: #ffd447; }
+.choice input:checked + span { background: #ff4f8b; color: #fff; }
+.field input { border: 3px solid #2a1a5e; font-weight: 600; }
+.topbar .icon { background: #fff; border: 3px solid #2a1a5e; box-shadow: 0 3px 0 #2a1a5e; font-weight: 800; }
+.topbar .phase { font-weight: 800; font-size: 1.1em; }
+.seat { background: #fff; border: 3px solid #2a1a5e; border-radius: 20px; padding: 8px 12px 10px; box-shadow: 0 4px 0 #2a1a5e; }
+.seat .avatar { border: 2px solid #2a1a5e; }
+.seat .badge { background: #ff4f8b; color: #fff; font-weight: 800; }
+.seat.out { opacity: .7; }
+.center { background: #c9bbff; border: 3px solid #2a1a5e; border-radius: 28px; padding: 22px 12px; }
+.pile .label { font-weight: 700; opacity: 1; }
+.caption { font-weight: 600; }
+.turn-banner { background: #2a1a5e; color: #fff; padding: 4px 16px; border-radius: 99px; font-weight: 800; }
+.brand h1 { font-size: clamp(60px, 13vw, 104px); font-weight: 800; line-height: .9; color: #7b5cff; -webkit-text-stroke: 3px #2a1a5e; paint-order: stroke fill; text-shadow: 0 6px 0 #2a1a5e; }
+.tagline { font-weight: 600; opacity: .85; }
+.result-card { background: #fff; border: 3px solid #2a1a5e; border-radius: 28px; box-shadow: 0 6px 0 #2a1a5e; padding: 28px 22px; }
+.result-card h2 { font-size: 38px; font-weight: 800; }
+.standings li { border-color: #e7e0ff; font-weight: 600; }
+.standings .you { background: #fff6cc; border-radius: 12px; }

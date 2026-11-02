@@ -1,0 +1,33 @@
+/* Game night: a 1970s board-game box. Mustard, chocolate and orange, chunky type, striped card backs. */
+:root {
+  --bg: #e8b23a; --ink: #3b2314; --accent: #e2582a; --on-accent: #fff6e3;
+  --face: #fff6e3; --black: #3b2314; --red: #d2442b;
+  --back: #e2582a; --back-ink: #fff6e3;
+  --font: "Rubik", system-ui, sans-serif; --rank-weight: 700;
+  --card-border: 2px solid #3b2314; --card-radius: 10px;
+  --btn-bg: #fff6e3; --btn-radius: 99px; --input-bg: #fff6e3;
+  --avatar: #fff6e3;
+}
+body { background: #e8b23a; }
+.card.back { background: repeating-linear-gradient(0deg, #e2582a 0 18%, #f29a33 18% 36%, #8a4a22 36% 54%); border: 2px solid #3b2314; }
+.card.playable { box-shadow: 0 0 0 3px #3b2314; }
+.card.selected { box-shadow: 0 0 0 3px #e2582a; }
+
+/* the board: a chocolate disc with a striped edge */
+.center { background: #6e3b1f; color: #fff6e3; border-radius: 999px; padding: 34px 20px; box-shadow: 0 0 0 8px #e2582a, 0 0 0 16px #f29a33, 0 0 0 24px #8a4a22; margin: 24px 8px; }
+.center .pile .label { color: #f8d48a; opacity: 1; }
+.caption b { color: #f8d48a; }
+.seat { background: #fff6e3; border: 2px solid #3b2314; border-radius: 18px; padding: 8px 12px; }
+.seat .avatar { border: 2px solid #3b2314; background: #e2582a; color: #fff6e3; }
+.seat .badge { background: #3b2314; color: #f8d48a; }
+.topbar .phase { font-weight: 700; }
+.topbar .icon { background: #fff6e3; border: 2px solid #3b2314; }
+.turn-banner { font-family: "Shrikhand", cursive; font-weight: 400; font-size: 1.4em; color: #3b2314; }
+.btn, .choice span { border: 2px solid #3b2314; font-weight: 700; }
+.choice input:checked + span { background: #3b2314; color: #f8d48a; }
+.field input { border: 2px solid #3b2314; }
+.brand h1 { font-family: "Shrikhand", cursive; font-weight: 400; font-size: clamp(64px, 14vw, 116px); line-height: 1; color: #fff6e3; text-shadow: 3px 3px 0 #e2582a, 6px 6px 0 #8a4a22; }
+.tagline { font-weight: 600; opacity: 1; }
+.result-card { background: #fff6e3; border: 3px solid #3b2314; border-radius: 24px; padding: 28px 22px; box-shadow: 8px 8px 0 #8a4a22; }
+.result-card h2 { font-family: "Shrikhand", cursive; font-weight: 400; font-size: 40px; color: #e2582a; }
+.standings li { border-color: #e9cf9c; }
