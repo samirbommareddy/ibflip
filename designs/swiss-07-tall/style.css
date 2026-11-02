@@ -1,0 +1,7 @@
+/* Tall: Condensed display type for huge numerals in little space. Backs are a tight run of vertical stripes. */
+:root { --accent: #e3120b; --heavy: 900; }
+.card { --card-font: "Big Shoulders Display", sans-serif; }
+.card::before { font-family: "Big Shoulders Display", sans-serif; font-size: calc(var(--w) * .8); letter-spacing: 0; }
+.brand h1, .turn-banner, .result-card h2, .hand-count .n, .seat .name { font-family: "Big Shoulders Display", sans-serif; letter-spacing: 0; }
+.brand h1 { font-size: clamp(88px, 22vw, 180px); }
+.card.back { --back-image: repeating-linear-gradient(90deg, var(--line) 0 3px, #fff 3px 6px, var(--accent) 6px 9px, #fff 9px 12px); }

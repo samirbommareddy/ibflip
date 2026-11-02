@@ -1,0 +1,5 @@
+/* Seven: Seven is the top IB grade, so the back is one big outlined 7. Green accent, Hanken Grotesk. */
+:root { --accent: #0b8a4c; --selected: #e3f4ea; --font: "Hanken Grotesk", Arial, sans-serif; --heavy: 900; }
+.card.back { --back-image: var(--accent); --back-mark: "7"; --back-mark-size: .9; --back-mark-ink: transparent; }
+.card.back::after { -webkit-text-stroke: 2px #fff; font-weight: 900; }
+.card.sm.back::after { -webkit-text-stroke: 1.5px #fff; }

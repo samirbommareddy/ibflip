@@ -1,0 +1,6 @@
+/* Night: The grid inverted: pure black, white rules, red for your turn. Backs are fine white hatching. */
+:root { --paper: #000; --line: #f2f2f2; --accent: #ff3b2f; --muted: #9a9a9a; --panel: #121212; --selected: #3a0f0c; --card-face: #000; }
+:root { --on-accent: #000; }
+.card.back { --back-image: repeating-linear-gradient(45deg, #000 0 4px, #f2f2f2 4px 5px); }
+.btn.primary, .deal { color: #000; }
+.choice input:checked + span { color: #000; }

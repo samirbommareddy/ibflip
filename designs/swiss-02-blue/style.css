@@ -1,0 +1,4 @@
+/* Blue squares: Same grid in ultramarine. The back is a set of nested squares, like a target seen from above. */
+:root { --accent: #1d3fd8; --selected: #e6ebff; --font: "Schibsted Grotesk", Arial, sans-serif; }
+.card.back { --back-image: #fff; box-shadow: inset 0 0 0 3px var(--accent), inset 0 0 0 6px #fff, inset 0 0 0 9px var(--accent), inset 0 0 0 12px #fff, inset 0 0 0 15px var(--accent), inset 0 0 0 18px #fff, inset 0 0 0 99px var(--accent); }
+.card.sm.back { box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 0 4px #fff, inset 0 0 0 6px var(--accent), inset 0 0 0 8px #fff, inset 0 0 0 99px var(--accent); }

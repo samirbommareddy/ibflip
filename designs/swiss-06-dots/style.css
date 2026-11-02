@@ -1,0 +1,6 @@
+/* Dots: Yellow highlighter on black and white. The back is a black card with a grid of yellow dots. */
+:root { --accent: #f5c400; --selected: #fff6c7; --font: "Work Sans", Arial, sans-serif; --on-accent: #111; }
+.card.red { color: #d0021b; }
+.card.back { --back-image: radial-gradient(circle, var(--accent) 0 1.6px, transparent 2px) 0 0 / 9px 9px, var(--line); }
+.deal, .btn.primary { color: #111; }
+.caption b, .standings .you .pl { color: #111; background: var(--accent); padding: 0 3px; }

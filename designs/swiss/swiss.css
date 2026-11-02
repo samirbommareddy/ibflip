@@ -1,0 +1,94 @@
+/* Swiss family: shared grid, tokens and card anatomy. Each variant sets the tokens and its card back. */
+:root {
+  --paper: #ffffff; --line: #111111; --accent: #e3120b; --muted: #6a6a6a; --panel: #f4f4f4; --selected: #ffe9e8;
+  --rule: 2px; --heavy: 800; --font: "Archivo", "Helvetica Neue", Arial, sans-serif;
+}
+body { background: var(--paper); }
+.card.back span { display: none; }
+.card.back { background: var(--back-image, var(--line)); border: var(--rule) solid var(--line); overflow: hidden; }
+.card.back::after { content: var(--back-mark, none); position: absolute; inset: 0; display: grid; place-items: center; font-weight: var(--heavy, 800); font-size: calc(var(--w) * var(--back-mark-size, .34)); letter-spacing: -.04em; color: var(--back-mark-ink, #fff); line-height: 1; }
+.card.sm.back::after { font-size: calc(var(--w) * var(--back-mark-size, .34)); }
+.me.waiting .hand .card { pointer-events: none; }
+:root {
+  --bg: var(--paper); --ink: var(--line); --on-accent: var(--paper);
+  --face: var(--card-face, #fff); --black: var(--line); --red: var(--accent);
+  --back: var(--line); --back-ink: var(--paper);
+  --rank-weight: var(--heavy, 800);
+  --card-border: var(--rule) solid var(--line); --card-radius: 2px;
+  --btn-bg: var(--panel); --btn-radius: 0; --input-bg: var(--paper);
+  --avatar: transparent; --gap: 0px; --pad: 0; --lift: -10px;
+}
+.card .idx, .card .idx2 { display: none; }
+.card .pip { font-size: calc(var(--w) * .2); align-items: end; justify-items: end; padding: 6%; }
+.card::before { content: attr(data-rank); position: absolute; left: 7%; top: 2%; font-size: calc(var(--w) * .56); font-weight: var(--heavy, 800); letter-spacing: -.04em; line-height: 1; }
+.card.back::before, .card.xs::before { content: none; }
+.card.xs .idx { display: flex; }
+.card.back span { font-size: calc(var(--w) * .18); }
+.card.selected { background: var(--selected); }
+.card.playable { border-color: var(--line); }
+.card.blocked { opacity: .25; }
+
+/* the grid: every block is a row with a label column on the left */
+.game { display: block; padding: 0; }
+.topbar { display: grid; grid-template-columns: 48px auto 1fr 48px; border-bottom: var(--rule) solid var(--line); padding: 0 8px; min-height: 52px; }
+.topbar .icon { border-radius: 0; }
+.topbar .phase { text-align: left; font-weight: var(--heavy, 800); }
+.topbar .room { font-size: .85em; color: var(--muted); }
+.opponents { display: block; }
+.seat, .center, .me { display: grid; grid-template-columns: minmax(96px, 22%) 1fr; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.seat .who { flex-direction: column; align-items: flex-start; gap: 0; }
+.seat .avatar { display: none; }
+.seat .name { font-weight: var(--heavy, 800); font-size: 1.15em; }
+.seat .level { font-size: .8em; color: var(--muted); opacity: 1; }
+.seat .badge { background: var(--accent); border-radius: 0; margin-top: 4px; }
+.holdings { flex-direction: row; justify-content: flex-start; align-items: center; gap: 18px; flex-wrap: wrap; }
+.hand-count { flex-direction: column; gap: 0; }
+.hand-count .n { font-size: 1.8em; font-weight: var(--heavy, 800); line-height: 1; }
+.hand-count .l { font-size: .75em; color: var(--muted); }
+.table-cards { flex-direction: row; gap: 10px; }
+.table-cards .ups { margin: 0; }
+.seat.out { opacity: .4; }
+.center { grid-template-columns: repeat(3, auto) 1fr; justify-content: start; gap: 24px; background: var(--panel); }
+.pile { align-items: flex-start; }
+.pile .label { font-size: .8em; color: var(--muted); opacity: 1; }
+.caption { grid-column: 1 / -1; text-align: left; font-size: 1.05em; }
+.caption b { color: var(--accent); }
+.me { grid-template-columns: 1fr; justify-items: start; border-bottom: 0; }
+.my-table { flex-direction: row; gap: 10px; }
+.my-table .ups { margin: 0; }
+.hand { justify-content: flex-start; flex-wrap: wrap; padding-top: 8px; }
+.turn-banner { font-size: 1.6em; font-weight: var(--heavy, 800); letter-spacing: -.02em; }
+.actions { justify-content: flex-start; }
+.btn { border: var(--rule) solid var(--line); background: var(--paper); font-weight: 700; }
+.btn.primary { border-color: var(--accent); }
+@media (min-width: 900px) {
+  .game { display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "top top" "opps me" "center me"; grid-template-rows: auto auto 1fr; gap: 0; }
+  .opponents { display: block; border-right: var(--rule) solid var(--line); }
+  .seat-1, .seat-2, .seat-3 { grid-area: auto; }
+  .center { border-right: var(--rule) solid var(--line); align-content: start; align-self: start; }
+  .me { align-content: start; }
+}
+/* home + results */
+.home { align-items: stretch; justify-content: flex-start; max-width: 560px; margin: 0 auto; padding-top: 10vh; }
+.brand { text-align: left; border-bottom: var(--rule) solid var(--line); padding-bottom: 12px; }
+.brand h1 { font-size: clamp(64px, 16vw, 132px); font-weight: var(--heavy, 800); letter-spacing: var(--title-track, -.05em); line-height: .9; padding-bottom: .14em; }
+.tagline { opacity: 1; color: var(--muted); margin-top: 10px; max-width: 40ch; }
+.setup { width: 100%; }
+.field input { border: var(--rule) solid var(--line); }
+.choice span { border: var(--rule) solid var(--line); background: var(--paper); }
+.choice input:checked + span { background: var(--line); color: var(--paper); }
+.deal { background: var(--accent); border: 0; font-size: 1.25em; }
+.result-card { text-align: left; }
+.result-card h2 { font-size: clamp(40px, 9vw, 64px); font-weight: var(--heavy, 800); letter-spacing: -.03em; line-height: 1; }
+.standings li { border-bottom: 1px solid var(--line); }
+.standings .pl { font-size: 1.3em; }
+.standings .you .pl { color: var(--accent); }
+@media (max-width: 899px) {
+  .seat .ups .card, .seat .downs .card { --w: 36px; }
+  .seat .ups .card .idx { display: none; }
+  .table-cards .ups { margin: 0; }
+  .seat, .center, .me { padding: 10px 12px; }
+  .seat { grid-template-columns: 64px 1fr; }
+  .holdings { gap: 10px; }
+}
+@media (max-width: 899px) { .game { padding-bottom: 56px; } }

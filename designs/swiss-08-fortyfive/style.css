@@ -1,0 +1,5 @@
+/* Forty-five: A nod to the 45-point diploma: each back carries a round 45 seal. Orange-red and Bricolage Grotesque. */
+:root { --accent: #f04a00; --selected: #ffeadf; --font: "Bricolage Grotesque", Arial, sans-serif; }
+.card.back { --back-image: #fff; --back-mark: "45"; --back-mark-ink: #fff; --back-mark-size: .2; }
+.card.back::before { content: ""; position: absolute; left: 50%; top: 50%; width: 62%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--accent); }
+.card.back::after { z-index: 1; }

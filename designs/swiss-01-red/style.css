@@ -1,0 +1,3 @@
+/* Red: The one you picked, tidied: Archivo, black rules, signal red. The back splits red and black on the diagonal. */
+:root { --accent: #e3120b; }
+.card.back { --back-image: linear-gradient(135deg, var(--accent) 0 50%, var(--line) 50% 100%); }

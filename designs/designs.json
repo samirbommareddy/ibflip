@@ -1,52 +1,122 @@
 [
  {
+  "slug": "swiss-01-red",
+  "name": "Red",
+  "desc": "The one you picked, tidied: Archivo, black rules, signal red. The back splits red and black on the diagonal.",
+  "round": 2
+ },
+ {
+  "slug": "swiss-02-blue",
+  "name": "Blue squares",
+  "desc": "Same grid in ultramarine. The back is a set of nested squares, like a target seen from above.",
+  "round": 2
+ },
+ {
+  "slug": "swiss-03-exam",
+  "name": "Exam paper",
+  "desc": "Inspired by the IB exam room: ruled answer lines, candidate-number boxes and an ink-blue accent.",
+  "round": 2
+ },
+ {
+  "slug": "swiss-04-seven",
+  "name": "Seven",
+  "desc": "Seven is the top IB grade, so the back is one big outlined 7. Green accent, Hanken Grotesk.",
+  "round": 2
+ },
+ {
+  "slug": "swiss-05-night",
+  "name": "Night",
+  "desc": "The grid inverted: pure black, white rules, red for your turn. Backs are fine white hatching.",
+  "round": 2
+ },
+ {
+  "slug": "swiss-06-dots",
+  "name": "Dots",
+  "desc": "Yellow highlighter on black and white. The back is a black card with a grid of yellow dots.",
+  "round": 2
+ },
+ {
+  "slug": "swiss-07-tall",
+  "name": "Tall",
+  "desc": "Condensed display type for huge numerals in little space. Backs are a tight run of vertical stripes.",
+  "round": 2
+ },
+ {
+  "slug": "swiss-08-fortyfive",
+  "name": "Forty-five",
+  "desc": "A nod to the 45-point diploma: each back carries a round 45 seal. Orange-red and Bricolage Grotesque.",
+  "round": 2
+ },
+ {
+  "slug": "swiss-09-ledger",
+  "name": "Ledger",
+  "desc": "Everything sits in cells, like a results table. Hairline grid, checkerboard backs, Familjen Grotesk.",
+  "round": 2
+ },
+ {
+  "slug": "swiss-10-flip",
+  "name": "Flip",
+  "desc": "The name made literal: each back shows an F and its mirror image. Black, white and one green.",
+  "round": 2
+ },
+ {
   "slug": "01-quiet-felt",
   "name": "Quiet felt",
-  "desc": "A flat green table with nothing extra: no rail, no glow, plain white cards."
+  "desc": "A flat green table with nothing extra: no rail, no glow, plain white cards.",
+  "round": 1
  },
  {
   "slug": "02-notepad",
   "name": "Notepad",
-  "desc": "Blue ballpoint on graph paper, like a scorepad on the kitchen table."
+  "desc": "Blue ballpoint on graph paper, like a scorepad on the kitchen table.",
+  "round": 1
  },
  {
   "slug": "03-navy-brass",
   "name": "Navy and brass",
-  "desc": "A members' card room: deep navy, ivory cards, brass details."
+  "desc": "A members' card room: deep navy, ivory cards, brass details.",
+  "round": 1
  },
  {
   "slug": "04-lilac-pop",
   "name": "Lilac pop",
-  "desc": "A chunky, friendly mobile game: thick outlines, solid shadows, big tap targets."
+  "desc": "A chunky, friendly mobile game: thick outlines, solid shadows, big tap targets.",
+  "round": 1
  },
  {
   "slug": "05-swiss",
   "name": "Swiss",
-  "desc": "No table at all. A strict grid of rows, one red, giant numerals."
+  "desc": "No table at all. A strict grid of rows, one red, giant numerals.",
+  "round": 1
  },
  {
   "slug": "06-game-night",
   "name": "Game night",
-  "desc": "A 1970s board-game box: mustard, brown and orange, striped card backs."
+  "desc": "A 1970s board-game box: mustard, brown and orange, striped card backs.",
+  "round": 1
  },
  {
   "slug": "07-pocket",
   "name": "Pocket",
-  "desc": "A four-shade handheld screen with pixel type and hard edges."
+  "desc": "A four-shade handheld screen with pixel type and hard edges.",
+  "round": 1
  },
  {
   "slug": "08-indigo",
   "name": "Indigo",
-  "desc": "Indigo-dyed cloth and pale paper, with wave-patterned card backs."
+  "desc": "Indigo-dyed cloth and pale paper, with wave-patterned card backs.",
+  "round": 1
  },
  {
   "slug": "09-big-numbers",
   "name": "Big numbers",
-  "desc": "Cards reduced to one huge numeral each, readable from across the room."
+  "desc": "Cards reduced to one huge numeral each, readable from across the room.",
+  "round": 1
  },
  {
   "slug": "10-picnic",
   "name": "Picnic",
-  "desc": "Daylight: a blue gingham cloth, soft paper cards, rounded everything."
+  "desc": "Daylight: a blue gingham cloth, soft paper cards, rounded everything.",
+  "round": 1
  }
 ]

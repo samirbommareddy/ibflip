@@ -44,7 +44,7 @@
   function card(c, extra = "") {
     const r = rankOf(c), s = D.suits[suitOf(c)];
     const tag = D.tags && TAG[r] ? `<span class="tag">${TAG[r]}</span>` : "";
-    return `<div class="card ${red(c) ? "red" : "black"} ${extra}" data-rank="${r}" data-suit="${suitOf(c)}" aria-label="${r} of ${{ s: "spades", h: "hearts", d: "diamonds", c: "clubs" }[suitOf(c)]}">` +
+    return `<div class="card ${red(c) ? "red" : "black"} ${extra}" data-c="${c}" data-rank="${r}" data-suit="${suitOf(c)}" aria-label="${r} of ${{ s: "spades", h: "hearts", d: "diamonds", c: "clubs" }[suitOf(c)]}">` +
       `<span class="idx"><b>${r}</b><i>${s}</i></span><span class="pip">${s}</span><span class="idx2"><b>${r}</b><i>${s}</i></span>${tag}</div>`;
   }
   const back = (extra = "") => `<div class="card back ${extra}"><span>${D.backLabel}</span></div>`;
@@ -119,6 +119,78 @@
     </main>`;
   }
 
+  // ---------- motion demo: play your selection, then Otto answers ----------
+  const ORIG = JSON.parse(JSON.stringify({ live: S.live, hand: S.hand, caption: S.caption, target: S.target, opponents: S.opponents, deck: S.deck }));
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const EASE = "cubic-bezier(.2,.75,.25,1)";
+  const rect = (el) => el && el.getBoundingClientRect();
+
+  function flipFrom(el, from, { rotate = 0, scale = 1, duration = 460, delay = 0 } = {}) {
+    if (!el || !from || reduced()) return Promise.resolve();
+    const to = el.getBoundingClientRect();
+    const dx = from.left + from.width / 2 - (to.left + to.width / 2);
+    const dy = from.top + from.height / 2 - (to.top + to.height / 2);
+    const s0 = (from.width / to.width) * scale;
+    return el.animate(
+      [{ transform: `translate(${dx}px, ${dy}px) scale(${s0}) rotate(${rotate}deg)` }, { transform: "none" }],
+      { duration, delay, easing: EASE, fill: "backwards" }
+    ).finished;
+  }
+
+  function rerenderTable() {
+    const keepSwitch = document.body.dataset.screen;
+    document.getElementById("app").innerHTML = table();
+    document.body.dataset.screen = keepSwitch;
+  }
+
+  let busy = false;
+  async function playSelected() {
+    const sel = [...document.querySelectorAll(".hand .card.selected")];
+    if (!sel.length || busy) return;
+    busy = true;
+    const from = new Map(sel.map((el) => [el.dataset.c, rect(el)]));
+    const handBefore = new Map([...document.querySelectorAll(".hand .card")].map((el) => [el.dataset.c, rect(el)]));
+    const codes = sel.map((el) => el.dataset.c);
+    S.live = [...S.live, ...codes];
+    S.hand = S.hand.filter((h) => !codes.includes(h.c));
+    S.target = rankOf(codes[0]);
+    S.caption = { who: "You", text: `played ${codes.map((c) => rankOf(c) + D.suits[suitOf(c)]).join(" ")}` };
+    rerenderTable();
+    document.querySelector(".me").classList.add("waiting");
+    // cards you kept slide to close the gap; the played ones fly to the pile
+    document.querySelectorAll(".hand .card").forEach((el) => flipFrom(el, handBefore.get(el.dataset.c), { duration: 320 }));
+    await Promise.all(codes.map((c, i) => flipFrom(document.querySelector(`.live .card[data-c="${c}"]`), from.get(c), { rotate: -6 + i * 4, delay: i * 70 })));
+    await new Promise((r) => setTimeout(r, 900));
+    // Otto answers from his hand
+    const seat = document.querySelector(".seat-1 .hand-count");
+    const src = rect(seat);
+    S.live = [...S.live, "5c"];
+    S.opponents[0].hand -= 1;
+    S.target = rankOf(codes[0]);
+    S.caption = { who: "Otto", text: "played 5♣. Next player plays on the card under it" };
+    rerenderTable();
+    document.querySelector(".me").classList.add("waiting");
+    await flipFrom(document.querySelector('.live .card[data-c="5c"]'), src, { scale: .5, rotate: 8, duration: 520 });
+    // and draws back up from the deck
+    const deck = rect(document.querySelector(".deck .card"));
+    S.opponents[0].hand += 1; S.deck -= 1;
+    rerenderTable();
+    const ghost = document.querySelector(".deck .card").cloneNode(true);
+    const seatRect = rect(document.querySelector(".seat-1 .hand-count"));
+    Object.assign(ghost.style, { position: "fixed", left: deck.left + "px", top: deck.top + "px", margin: 0, zIndex: 50, pointerEvents: "none" });
+    document.body.append(ghost);
+    if (!reduced()) await ghost.animate([{ transform: "none", opacity: 1 }, { transform: `translate(${seatRect.left - deck.left}px, ${seatRect.top - deck.top}px) scale(.4)`, opacity: 0 }], { duration: 480, easing: EASE }).finished;
+    ghost.remove();
+    S.caption = { who: "Fern", text: "is thinking…" };
+    rerenderTable();
+    busy = false;
+  }
+
+  function resetDemo() {
+    Object.assign(S, JSON.parse(JSON.stringify(ORIG)));
+    show("table");
+  }
+
   const screens = { table, home, results };
   function show(name) {
     document.getElementById("app").innerHTML = screens[name]();
@@ -129,7 +201,8 @@
 
   document.addEventListener("click", (e) => {
     const sw = e.target.closest(".mock-switch button");
-    if (sw) return show(sw.dataset.s);
+    if (sw) return sw.dataset.s === "reset" ? resetDemo() : show(sw.dataset.s);
+    if (e.target.closest(".play")) return playSelected();
     const c = e.target.closest(".hand .card.playable");
     if (c) {
       const same = [...document.querySelectorAll(".hand .card.selected")].every((x) => x.dataset.rank === c.dataset.rank);
@@ -148,7 +221,7 @@
     const sw = document.createElement("nav");
     sw.className = "mock-switch";
     sw.setAttribute("aria-label", "Mockup screens");
-    sw.innerHTML = `<a href="../">All designs</a>` + ["home", "table", "results"].map((s) => `<button data-s="${s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join("");
+    sw.innerHTML = `<a href="../">All designs</a>` + ["home", "table", "results"].map((s) => `<button data-s="${s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join("") + `<button data-s="reset" title="Put the cards back">Replay</button>`;
     document.body.append(sw);
     const start = (location.hash || "#table").slice(1);
     show(screens[start] ? start : "table");

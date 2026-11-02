@@ -1,0 +1,7 @@
+/* Ledger: Everything sits in cells, like a results table. Hairline grid, checkerboard backs, Familjen Grotesk. */
+:root { --accent: #c4001a; --font: "Familjen Grotesk", Arial, sans-serif; --heavy: 700; --rule: 1px; }
+.card.back { --back-image: repeating-conic-gradient(var(--line) 0 25%, #fff 0 50%) 0 0 / 10px 10px; }
+.seat, .center, .me { border-bottom: 1px solid var(--line); }
+.seat .who { border-right: 1px solid var(--line); align-self: stretch; justify-content: center; padding-right: 8px; }
+.hand-count { border: 1px solid var(--line); padding: 4px 8px; }
+.btn, .choice span, .field input { border-width: 1px; }
