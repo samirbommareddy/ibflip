@@ -162,8 +162,8 @@ def test_queen_on_queen_on_consecutive_turns():
         assert g["live"][-2:] == [Q[0], Q[1]]
 
 
-@pytest.mark.parametrize("slots", [[[Q[0]], [Q[1]], [K[0]]], [[Q[0], Q[1]], [K[0]], [K[1]]]], ids=["two-slots", "stacked"])
-def test_two_queens_in_one_turn_from_face_up(slots):
+def test_two_queens_stacked_in_one_face_up_slot_play_together():
+    slots = [[Q[0], Q[1]], [K[0]], [K[1]]]
     with TestClient(app) as client, playing(client) as (room, (ws,), _):
         set_position(client, room, current=0, hands=[[], [K[2]]], live=[J[0]], face_up=[slots, [[], [], []]])
         g = recv_until(ws, is_state(lambda g: g["current"] == 0))["game"]
@@ -177,25 +177,29 @@ def test_two_queens_in_one_turn_from_face_up(slots):
         recv_until(ws, is_state(lambda g: g["current"] == 1))
 
 
-@pytest.mark.xfail(
-    reason=(
-        "ENGINE (src/ibflip/engine.py): rules say 'If a player draws a card that they just played, they may "
-        "play that card as well, as long as they manage to play it before the next player plays', but the "
-        "engine only draws back up to three in _resolve_committed_cards (called on END_PLAY_GROUP) and then "
-        "passes the turn, so a Q drawn right after playing a Q can never follow it."
-    ),
-    strict=False,
-)
+def test_queens_in_separate_face_up_slots_cannot_be_played_together():
+    """User ruling: same-rank face-up cards play together only if stacked in one slot."""
+    slots = [[Q[0]], [Q[1]], [K[0]]]
+    with TestClient(app) as client, playing(client) as (room, (ws,), _):
+        set_position(client, room, current=0, hands=[[], [K[2]]], live=[J[0]], face_up=[slots, [[], [], []]])
+        g = recv_until(ws, is_state(lambda g: g["current"] == 0))["game"]
+        assert {Q[0], Q[1]} <= set(g["legal"]["cards"])
+        play(ws, Q[0])
+        g = recv_until(ws, is_state(lambda g: g["group_count"] == 1))["game"]
+        assert Q[1] not in g["legal"]["cards"] and g["legal"]["end_group"]
+
+
 def test_queen_drawn_after_playing_a_queen_can_follow_it():
+    """Rules: 'If a player draws a card that they just played, they may play that card as well'."""
     with TestClient(app) as client, playing(client) as (room, (ws,), _):
         # Early game: play Q from a full hand; the next card on the deck is another Q.
         set_position(client, room, current=0, hands=[[Q[0], K[0], K[1]], [K[2]]], live=[J[0]], draw=(Q[1], 0, 1, 2))
         recv_until(ws, is_state(lambda g: g["current"] == 0))
         play(ws, Q[0])
-        recv_until(ws, is_state(lambda g: g["group_count"] == 1))
-        play(ws, A_END)
-        g = recv_until(ws, is_state(lambda g: Q[1] in g["hand"]))["game"]
+        g = recv_until(ws, is_state(lambda g: g["group_count"] == 1 and Q[1] in g["hand"]))["game"]
         assert g["current"] == 0 and Q[1] in g["legal"]["cards"]
+        play(ws, Q[1])
+        recv_until(ws, is_state(lambda g: g["group_count"] == 2))
 
 
 # -------------------------------------------------- message validation
@@ -277,6 +281,10 @@ def _play_randomly_until_over(ws, rng, limit=20000, seen=None):
         if m["game"]["status"] == "over":
             return m
         opts = ui_options(m["game"])
+        # Pickup is now offered next to reveal/plays; picking up at random drags games out for minutes.
+        plays = [o for o in opts if o != A_PICKUP]
+        if plays and rng.random() < 0.9:
+            opts = plays
         if opts:
             play(ws, rng.choice(opts))
     raise AssertionError("game did not finish")
