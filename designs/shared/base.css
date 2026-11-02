@@ -172,3 +172,5 @@ body[data-screen="table"] .mock-switch:hover, body[data-screen="table"] .mock-sw
   .seat-2 { grid-area: opps; }
   .seat-3 { grid-area: right; align-self: center; }
 }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.seen-mini { margin-left: 4px; }

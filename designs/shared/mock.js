@@ -10,7 +10,7 @@
     you: "Elliot",
     turn: "you",
     target: "2",
-    caption: { who: "Otto", text: "played 2♠ and goes again… then drew" },
+    caption: { who: "Otto", text: "2♠, again" },
     deck: 9,
     discard: 14,
     live: ["Qc", "Jd", "Kh", "2s"],
@@ -29,10 +29,10 @@
     up: [["9h"], ["Ac", "As"], ["Ks"]],
     down: 3,
     standings: [
-      { place: "1st", name: "Pip", note: "out legally" },
-      { place: "2nd", name: "Elliot", note: "out legally", you: true },
-      { place: "3rd", name: "Fern", note: "out legally" },
-      { place: "Last", name: "Otto", note: "flipped the 8s" },
+      { place: "1st", name: "Pip", note: "" },
+      { place: "2nd", name: "Elliot", note: "", you: true },
+      { place: "3rd", name: "Fern", note: "" },
+      { place: "4th", name: "Otto", note: "8s" },
     ],
   };
 
@@ -52,16 +52,15 @@
 
   function seat(o, i) {
     const done = o.place != null;
-    const status = done ? `<span class="badge place">Finished ${o.place === 1 ? "1st" : o.place}</span>` : "";
+    const status = done ? `<span class="badge place">${o.place === 1 ? "1st" : o.place}</span>` : "";
     return `<section class="seat seat-${i + 1}${done ? " out" : ""}" aria-label="${esc(o.name)}">
       <header class="who"><span class="avatar" aria-hidden="true">${esc(o.name[0])}</span><span class="name">${esc(o.name)}</span><span class="level">${esc(o.level)}</span>${status}</header>
       <div class="holdings">
-        <div class="hand-count" title="Cards in hand"><span class="n">${o.hand}</span><span class="l">in hand</span></div>
+        <div class="hand-count" title="${o.hand} cards in hand"><span class="n">${o.hand}</span>${o.seen ? `<span class="seen-mini" title="Seen in their hand">${card(o.seen, "xs")}</span>` : ""}</div>
         <div class="table-cards">
           <div class="downs">${Array.from({ length: o.down }, () => back("sm")).join("")}</div>
           <div class="ups">${o.up.map(slot).join("")}</div>
         </div>
-        ${o.seen ? `<div class="seen">Seen in hand: ${card(o.seen, "xs")}</div>` : ""}
       </div>
     </section>`;
   }
@@ -73,13 +72,14 @@
         <button class="icon menu" aria-label="Menu">≡</button>
         <span class="room">Room ${S.room}</span>
         <span class="phase">On a ${S.target}</span>
+        ${D.themeToggle ? `<button class="icon theme" aria-label="Switch light or dark"><svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 2a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button>` : ""}
         <button class="icon hint" aria-label="Hint">?</button>
       </div>
       <div class="opponents">${S.opponents.map(seat).join("")}</div>
       <div class="center">
-        <div class="pile deck"><div class="stack">${back()}</div><span class="label">Deck ${S.deck}</span></div>
-        <div class="pile live"><div class="stack fan">${liveTop.map((c, i) => card(c, i === liveTop.length - 1 ? "top" : "under")).join("")}</div><span class="label">Live pile ${S.live.length + 3}</span></div>
-        <div class="pile discard"><div class="stack">${back("dim")}</div><span class="label">Discard ${S.discard}</span></div>
+        <div class="pile deck"><div class="stack">${back()}</div><span class="label" title="Deck">${S.deck}</span></div>
+        <div class="pile live"><div class="stack fan">${liveTop.map((c, i) => card(c, i === liveTop.length - 1 ? "top" : "under")).join("")}</div><span class="label" title="Live pile">${S.live.length + 3}</span></div>
+        <div class="pile discard"><div class="stack">${back("dim")}</div><span class="label" title="Discard">${S.discard}</span></div>
         <p class="caption"><b>${S.caption.who}</b> ${S.caption.text}</p>
       </div>
       <section class="me" aria-label="Your cards">
@@ -87,34 +87,33 @@
           <div class="downs">${Array.from({ length: S.down }, () => back("sm")).join("")}</div>
           <div class="ups">${S.up.map(slot).join("")}</div>
         </div>
-        <div class="turn-banner">Your turn. Play on the ${S.target}.</div>
+        <div class="turn-banner">Your turn</div>
         <div class="hand">${S.hand.map((h) => card(h.c, h.ok ? "playable" : "blocked")).join("")}</div>
-        <div class="actions"><button class="btn primary play" disabled>Play</button><button class="btn pickup">Pick up pile</button></div>
+        <div class="actions"><button class="btn primary play" disabled>Play</button><button class="btn pickup">Pick up</button></div>
       </section>
     </main>`;
   }
 
   function home() {
-    return `<main class="home" data-screen="home">
-      <div class="brand"><h1>IB-Flip</h1><p class="tagline">Flips, skips and sudden reversals. Lose your cards legally to win.</p></div>
+    return `<main class="home" data-screen="home">${D.themeToggle ? `<button class="icon theme home-theme" aria-label="Switch light or dark"><svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 2a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button>` : ""}
+      <div class="brand"><h1>IB-Flip</h1></div>
       <form class="setup" onsubmit="return false">
-        <label class="field"><span>Your name</span><input value="${S.you}" autocomplete="nickname"></label>
+        <label class="field"><span class="sr">Name</span><input value="${S.you}" placeholder="Name" autocomplete="nickname"></label>
         <fieldset class="choice"><legend>Opponents</legend>${[1, 2, 3, 4].map((n) => `<label><input type="radio" name="opp" ${n === 3 ? "checked" : ""}><span>${n}</span></label>`).join("")}</fieldset>
         <fieldset class="choice"><legend>Bots</legend>${["Rookie", "Regular", "Shark"].map((n) => `<label><input type="radio" name="lvl" ${n === "Shark" ? "checked" : ""}><span>${n}</span></label>`).join("")}</fieldset>
-        <button class="btn primary deal">Deal me in</button>
-        <div class="alt"><button class="btn">Create a room</button><button class="btn">Join with a code</button></div>
+        <button class="btn primary deal">Play</button>
+        <div class="alt"><button class="btn">New room</button><button class="btn">Join</button></div>
       </form>
-      <a class="rules-link" href="#">How to play</a>
+      <a class="rules-link" href="#">Rules</a>
     </main>`;
   }
 
   function results() {
     return `<main class="results" data-screen="results">
       <div class="result-card">
-        <h2>You finished 2nd</h2>
-        <p class="sub">Pip went out first. Otto flipped the 8s.</p>
+        <h2>2nd</h2>
         <ol class="standings">${S.standings.map((r) => `<li class="${r.you ? "you" : ""}"><span class="pl">${r.place}</span><span class="nm">${esc(r.name)}</span><span class="nt">${r.note}</span></li>`).join("")}</ol>
-        <div class="actions"><button class="btn primary">Play again</button><button class="btn">Back to lobby</button></div>
+        <div class="actions"><button class="btn primary">Again</button><button class="btn">Lobby</button></div>
       </div>
     </main>`;
   }
@@ -154,7 +153,7 @@
     S.live = [...S.live, ...codes];
     S.hand = S.hand.filter((h) => !codes.includes(h.c));
     S.target = rankOf(codes[0]);
-    S.caption = { who: "You", text: `played ${codes.map((c) => rankOf(c) + D.suits[suitOf(c)]).join(" ")}` };
+    S.caption = { who: "You", text: codes.map((c) => rankOf(c) + D.suits[suitOf(c)]).join(" ") };
     rerenderTable();
     document.querySelector(".me").classList.add("waiting");
     // cards you kept slide to close the gap; the played ones fly to the pile
@@ -167,7 +166,7 @@
     S.live = [...S.live, "5c"];
     S.opponents[0].hand -= 1;
     S.target = rankOf(codes[0]);
-    S.caption = { who: "Otto", text: "played 5♣. Next player plays on the card under it" };
+    S.caption = { who: "Otto", text: "5♣, under" };
     rerenderTable();
     document.querySelector(".me").classList.add("waiting");
     await flipFrom(document.querySelector('.live .card[data-c="5c"]'), src, { scale: .5, rotate: 8, duration: 520 });
@@ -181,7 +180,7 @@
     document.body.append(ghost);
     if (!reduced()) await ghost.animate([{ transform: "none", opacity: 1 }, { transform: `translate(${seatRect.left - deck.left}px, ${seatRect.top - deck.top}px) scale(.4)`, opacity: 0 }], { duration: 480, easing: EASE }).finished;
     ghost.remove();
-    S.caption = { who: "Fern", text: "is thinking…" };
+    S.caption = { who: "Fern", text: "…" };
     rerenderTable();
     busy = false;
   }
@@ -203,6 +202,12 @@
     const sw = e.target.closest(".mock-switch button");
     if (sw) return sw.dataset.s === "reset" ? resetDemo() : show(sw.dataset.s);
     if (e.target.closest(".play")) return playSelected();
+    if (e.target.closest(".theme")) {
+      const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = dark ? "light" : "dark";
+      try { localStorage.setItem("ibflip:theme", document.documentElement.dataset.theme); } catch (_) {}
+      return;
+    }
     const c = e.target.closest(".hand .card.playable");
     if (c) {
       const same = [...document.querySelectorAll(".hand .card.selected")].every((x) => x.dataset.rank === c.dataset.rank);
@@ -211,18 +216,22 @@
       const n = document.querySelectorAll(".hand .card.selected").length;
       const play = document.querySelector(".play");
       play.disabled = !n;
-      play.textContent = n ? `Play ${n > 1 ? n + " cards" : "card"}` : "Play";
+      play.textContent = n > 1 ? `Play ${n}` : "Play";
     }
     const opt = e.target.closest(".choice label");
     if (opt) opt.querySelector("input").checked = true;
   });
 
+  try { const t = localStorage.getItem("ibflip:theme"); if (t) document.documentElement.dataset.theme = t; } catch (_) {}
+  const Q = new URLSearchParams(location.search);
+  ["density", "cards"].forEach((k) => Q.get(k) && (document.documentElement.dataset[k] = Q.get(k)));
+  if (Q.get("theme")) document.documentElement.dataset.theme = Q.get("theme");
   document.addEventListener("DOMContentLoaded", () => {
     const sw = document.createElement("nav");
     sw.className = "mock-switch";
     sw.setAttribute("aria-label", "Mockup screens");
     sw.innerHTML = `<a href="../">All designs</a>` + ["home", "table", "results"].map((s) => `<button data-s="${s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join("") + `<button data-s="reset" title="Put the cards back">Replay</button>`;
-    document.body.append(sw);
+    if (!Q.get("embed")) document.body.append(sw);
     const start = (location.hash || "#table").slice(1);
     show(screens[start] ? start : "table");
   });

@@ -30,7 +30,7 @@ body { background: var(--paper); }
 
 /* the grid: every block is a row with a label column on the left */
 .game { display: block; padding: 0; }
-.topbar { display: grid; grid-template-columns: 48px auto 1fr 48px; border-bottom: var(--rule) solid var(--line); padding: 0 8px; min-height: 52px; }
+.topbar { display: grid; grid-template-columns: 48px auto 1fr auto auto; border-bottom: var(--rule) solid var(--line); padding: 0 8px; min-height: 52px; }
 .topbar .icon { border-radius: 0; }
 .topbar .phase { text-align: left; font-weight: var(--heavy, 800); }
 .topbar .room { font-size: .85em; color: var(--muted); }
@@ -92,3 +92,6 @@ body { background: var(--paper); }
   .holdings { gap: 10px; }
 }
 @media (max-width: 899px) { .game { padding-bottom: 56px; } }
+.hand-count { flex-direction: row; align-items: center; }
+.choice legend { min-width: 6em; }
+@media (max-width: 420px) { .choice span { padding: 8px 10px; } .choice legend { min-width: 5em; } .choice { flex-wrap: nowrap; } }

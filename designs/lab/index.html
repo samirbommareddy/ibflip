@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IB-Flip motion lab</title>
+<meta name="description" content="Every animation in IB-Flip with alternatives to compare, plus spacing and card-size options.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;600;800&display=swap">
+<link rel="stylesheet" href="../shared/base.css">
+<link rel="stylesheet" href="../swiss/swiss.css">
+<link rel="stylesheet" href="../blue/style.css">
+<link rel="stylesheet" href="lab.css">
+<script src="lab.js"></script>
+</head>
+<body>
+<main class="lab">
+  <header class="intro">
+    <a class="back-link" href="../">All designs</a>
+    <h1>Motion lab</h1>
+    <p>Press Play to try an option. The last one you played is your pick. Copy your picks at the bottom.</p>
+    <button class="btn theme-btn" onclick="(()=>{const r=document.documentElement;const d=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;r.dataset.theme=d?'light':'dark';const f=document.getElementById('preview');f.src=f.src.replace(/([?&])theme=[a-z]+/,'$1').replace('#table','')+(f.src.includes('?')?'&':'?')+'theme='+r.dataset.theme+'#table';})()">Switch light or dark</button>
+  </header>
+
+  <section class="demo spacing">
+    <header><h2>Spacing and card size</h2></header>
+    <div class="space-controls">
+      <div class="seg" role="group" aria-label="Spacing"><span>Spacing</span><button class="btn" data-space="density:compact">Compact</button><button class="btn" data-space="density:regular">Regular</button><button class="btn" data-space="density:airy">Airy</button></div>
+      <div class="seg" role="group" aria-label="Card size"><span>Card size</span><button class="btn" data-space="cards:small">Small</button><button class="btn" data-space="cards:medium">Medium</button><button class="btn" data-space="cards:large">Large</button></div>
+    </div>
+    <div class="previews"><iframe id="preview" title="Table preview" width="390" height="760"></iframe></div>
+  </section>
+
+  <div id="demos"></div>
+
+  <section class="picks">
+    <h2>Your picks</h2>
+    <textarea id="summary" rows="16" readonly></textarea>
+    <button class="btn primary" data-copy>Copy my picks</button>
+  </section>
+</main>
+</body>
+</html>

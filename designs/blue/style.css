@@ -1,0 +1,42 @@
+/* Blue: the Swiss grid in ultramarine, with a night mode that inverts the page
+   (pure black, light rules) and keeps blue as the only colour. */
+:root {
+  --paper: #ffffff; --line: #111111; --accent: #1d3fd8; --muted: #66666e; --panel: #f3f4f8; --selected: #e6ebff;
+  --card-face: #ffffff; --on-accent: #ffffff; --sq-gap: #ffffff;
+  --font: "Schibsted Grotesk", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #000000; --line: #ececf1; --accent: #6f8bff; --muted: #9a9aa6; --panel: #0d0f17; --selected: #16204a;
+    --card-face: #000000; --on-accent: #000000; --sq-gap: #000000; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #000000; --line: #ececf1; --accent: #6f8bff; --muted: #9a9aa6; --panel: #0d0f17; --selected: #16204a;
+  --card-face: #000000; --on-accent: #000000; --sq-gap: #000000; color-scheme: dark;
+}
+body { transition: background-color .25s ease, color .25s ease; }
+.card.back {
+  --back-image: var(--sq-gap);
+  box-shadow: inset 0 0 0 3px var(--accent), inset 0 0 0 6px var(--sq-gap), inset 0 0 0 9px var(--accent), inset 0 0 0 12px var(--sq-gap), inset 0 0 0 15px var(--accent), inset 0 0 0 18px var(--sq-gap), inset 0 0 0 99px var(--accent);
+}
+.card.sm.back { box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 0 4px var(--sq-gap), inset 0 0 0 6px var(--accent), inset 0 0 0 8px var(--sq-gap), inset 0 0 0 99px var(--accent); }
+.card.red { color: var(--accent); }
+.deal, .btn.primary, .choice input:checked + span { color: var(--on-accent); }
+.choice input:checked + span { background: var(--line); color: var(--paper); }
+.theme { font-size: 18px; }
+.home-theme { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border: var(--rule) solid var(--line); background: var(--paper); }
+.home { position: relative; }
+
+/* spacing and card-size options (picked in the motion lab) */
+:root[data-density="compact"] .seat, :root[data-density="compact"] .center, :root[data-density="compact"] .me { padding-top: 8px; padding-bottom: 8px; gap: 8px; }
+:root[data-density="compact"] .hand { gap: 4px; }
+:root[data-density="airy"] .seat, :root[data-density="airy"] .center, :root[data-density="airy"] .me { padding-top: 22px; padding-bottom: 22px; gap: 18px; }
+:root[data-density="airy"] .hand { gap: 12px; }
+:root[data-cards="small"] { --card-w: 46px; }
+:root[data-cards="large"] { --card-w: 60px; }
+@media (min-width: 900px) {
+  :root[data-cards="small"] { --card-w: 72px; }
+  :root[data-cards="large"] { --card-w: 100px; }
+}
