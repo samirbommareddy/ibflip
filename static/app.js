@@ -706,14 +706,17 @@ function renderMe() {
     if (L.reveal) buttons.push(["Flip deck top", "primary", A_REVEAL]);
   }
   setHTML($("#actionBar"), buttons.map(([label, cls, a]) => `<button class="btn ${cls}" data-act="${a}">${label}</button>`).join(""));
+  // Buttons are reused across renders; a fresh state always re-enables them.
+  $$("#actionBar button").forEach((b) => (b.disabled = false));
 }
 
 function handLayout(hand, n) {
   const cw = hand.querySelector(".card")?.offsetWidth || 80;
-  const avail = Math.max(160, hand.clientWidth - 24);
+  // Leave room for the outer cards' rotation when the fan is wide.
+  const avail = Math.max(160, hand.clientWidth - 24 - (n > 4 ? cw * 0.6 : 0));
   const margin = n > 1 ? Math.min(-cw * 0.08, (avail - n * cw) / (2 * n)) : 0;
   const spread = Math.min(20, n * 3);
-  return { margin, spread, arc: Math.min(10, n * 1.6) };
+  return { margin, spread, arc: Math.min(10, n * 1.6), cw };
 }
 
 function renderHand(g, me, { mine, fixing, legalCards }) {
@@ -734,13 +737,16 @@ function renderHand(g, me, { mine, fixing, legalCards }) {
     if (hand.children[i] !== el) hand.insertBefore(el, hand.children[i] || null);
   });
   const n = cards.length;
-  const { margin, spread, arc } = handLayout(hand, n);
+  const { margin, spread, arc, cw } = handLayout(hand, n);
   $$(".card", hand).forEach((el, i) => {
     const id = Number(el.dataset.card);
     el.style.margin = `0 ${margin}px`;
     const t = n > 1 ? (i / (n - 1)) * 2 - 1 : 0; // -1 .. 1
-    el.style.setProperty("--rot", `${(t * spread) / 2}deg`);
-    el.style.setProperty("--arc", `${-(1 - t * t) * arc}px`);
+    const deg = (t * spread) / 2;
+    el.style.setProperty("--rot", `${deg}deg`);
+    // Rotating about a pivot below the card drops its outer corner by about
+    // (w/2)·sin|θ|; lift by that much so the fan never hangs off the bottom.
+    el.style.setProperty("--arc", `${-((1 - t * t) * arc + (cw / 2) * Math.sin(Math.abs(deg) * Math.PI / 180))}px`);
     el.style.zIndex = i + 1;
     const legal = (fixing) || (mine && legalCards.has(id) && g.source === "hand");
     el.classList.toggle("known-mark", known.has(id) && g.status !== "fixing");
@@ -757,7 +763,7 @@ function renderHand(g, me, { mine, fixing, legalCards }) {
     if (Math.abs(dx) > 1) el.animate([{ translate: `${dx}px 0` }, { translate: "0 0" }], { duration: 280, easing: "cubic-bezier(.2,.8,.2,1)" });
   }
   if (S.dealing) return;
-  added.forEach((el, k) => el.animate([{ opacity: 0, translate: "0 24px" }, { opacity: 1, translate: "0 0" }], { duration: 260, delay: k * 40, easing: "cubic-bezier(.2,.8,.2,1)", fill: "backwards" }));
+  added.forEach((el, k) => el.animate([{ opacity: 0, translate: "0 24px" }, { opacity: 1, translate: "0 0" }], { duration: 260, delay: Math.min(k * 40, 240), easing: "cubic-bezier(.2,.8,.2,1)", fill: "backwards" }));
 }
 
 // Delegated input for the player's own area — listeners live on stable

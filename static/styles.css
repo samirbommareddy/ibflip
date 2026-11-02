@@ -108,7 +108,8 @@ body::before {
 .link-btn { background: none; border: 0; color: var(--gold); text-decoration: underline; text-underline-offset: 3px; margin-top: 1rem; }
 
 /* ------------------------------------------------------------------- home */
-#home { align-items: center; justify-content: center; overflow-y: auto; }
+#home { overflow-y: auto; }
+#home .home-inner { margin: auto; }
 .home-inner { width: min(440px, 92vw); display: flex; flex-direction: column; align-items: center; padding: 2rem 0 3rem; }
 .hero-cards { position: relative; height: 140px; width: 260px; margin-bottom: .5rem; }
 .hero-cards .card { position: absolute; left: 50%; top: 18px; --card-w: 74px; transform-origin: 50% 120%; animation: heroIn .9s cubic-bezier(.2,.9,.25,1.2) both; }
@@ -379,14 +380,15 @@ body::before {
 .known-label { font-size: .62rem; color: var(--muted); }
 
 .slots { display: flex; gap: calc(var(--table-card-w) * .14); }
-.slot { position: relative; width: var(--table-card-w); height: calc(var(--table-card-w) * 1.4 + 8px); }
+.slot { position: relative; width: var(--table-card-w); height: calc(var(--table-card-w) * 1.4 + 14px); }
 .slot .card { position: absolute; left: 0; --card-w: var(--table-card-w); }
 .slot .card.down { top: 0; }
 .slot .card.up { top: 8px; }
-.slot .card.up + .card.up { top: 14px; left: 4px; }
-.slot .card.up + .card.up + .card.up { top: 20px; left: 8px; }
-.slot .card.up + .card.up + .card.up + .card.up { top: 26px; left: 12px; }
-.slot.empty::before { content: ""; position: absolute; inset: 0 0 8px; border: 1.5px dashed rgba(255,255,255,.12); border-radius: 7px; }
+/* Stacked face-up cards fan right and only slightly down, staying inside the slot */
+.slot .card.up + .card.up { top: 10px; left: 4px; }
+.slot .card.up + .card.up + .card.up { top: 12px; left: 8px; }
+.slot .card.up + .card.up + .card.up + .card.up { top: 14px; left: 12px; }
+.slot.empty::before { content: ""; position: absolute; inset: 8px 0 6px; border: 1.5px dashed rgba(255,255,255,.12); border-radius: 7px; }
 .seat .slots { --table-card-w: var(--opp-card-w); }
 .seat .slot { height: calc(var(--table-card-w) * 1.4 + 6px); }
 .seat .slot .card.up { top: 6px; }
@@ -402,7 +404,7 @@ body::before {
 .prompt.yours { background: linear-gradient(180deg, #ffd56b, #e9a93a); color: var(--accent-ink); box-shadow: 0 6px 22px rgba(233,169,58,.35); }
 .me-main {
   display: grid; width: 100%; max-width: 1400px;
-  grid-template-columns: minmax(150px, auto) 1fr minmax(150px, auto);
+  grid-template-columns: minmax(150px, auto) minmax(0, 1fr) minmax(150px, auto);
   grid-template-areas: "left hand actions";
   align-items: end; gap: 1rem;
 }
@@ -412,7 +414,7 @@ body::before {
 .me.turn .me-badge .avatar { box-shadow: 0 0 0 3px var(--accent), 0 0 22px rgba(242,193,78,.6); }
 .my-slots .slot { --table-card-w: clamp(44px, min(4.4vw, 7.5vh), 92px); }
 .action-bar { grid-area: actions; display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; align-self: center; }
-.hand { grid-area: hand; }
+.hand { grid-area: hand; min-width: 0; }
 .hand {
   position: relative; display: flex; justify-content: center; align-items: flex-end;
   height: calc(var(--card-h) + 14px); width: 100%;
@@ -580,7 +582,7 @@ body::before {
   .narration { font-size: .78rem; max-width: 94%; top: calc(65% + var(--pile-card-w) * .7 + 2rem); }
   .opp-row { gap: 6px; }
   .me-badge { display: none; }
-  .me-main { grid-template-columns: auto 1fr; grid-template-areas: "left actions" "hand hand"; gap: .3rem .6rem; }
+  .me-main { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "left actions" "hand hand"; gap: .3rem .6rem; }
   .action-bar { flex-direction: row; flex-wrap: wrap; align-items: center; }
   .seat-name { max-width: 6em; font-size: .75rem; }
   .seat-head .avatar { width: 26px; height: 26px; font-size: .9rem; }
