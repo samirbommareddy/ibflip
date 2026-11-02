@@ -10,7 +10,7 @@
     you: "Elliot",
     turn: "you",
     target: "2",
-    caption: { who: "Otto", text: "2♠, again" },
+    caption: { who: "Otto", text: "2♠" },
     deck: 9,
     discard: 14,
     live: ["Qc", "Jd", "Kh", "2s"],
@@ -166,7 +166,7 @@
     S.live = [...S.live, "5c"];
     S.opponents[0].hand -= 1;
     S.target = rankOf(codes[0]);
-    S.caption = { who: "Otto", text: "5♣, under" };
+    S.caption = { who: "Otto", text: "5♣" };
     rerenderTable();
     document.querySelector(".me").classList.add("waiting");
     await flipFrom(document.querySelector('.live .card[data-c="5c"]'), src, { scale: .5, rotate: 8, duration: 520 });
@@ -180,7 +180,7 @@
     document.body.append(ghost);
     if (!reduced()) await ghost.animate([{ transform: "none", opacity: 1 }, { transform: `translate(${seatRect.left - deck.left}px, ${seatRect.top - deck.top}px) scale(.4)`, opacity: 0 }], { duration: 480, easing: EASE }).finished;
     ghost.remove();
-    S.caption = { who: "Fern", text: "…" };
+    S.caption = { who: "", text: "" };
     rerenderTable();
     busy = false;
   }
@@ -225,6 +225,7 @@
   try { const t = localStorage.getItem("ibflip:theme"); if (t) document.documentElement.dataset.theme = t; } catch (_) {}
   const Q = new URLSearchParams(location.search);
   ["density", "cards"].forEach((k) => Q.get(k) && (document.documentElement.dataset[k] = Q.get(k)));
+  if (D.defaultCards && !document.documentElement.dataset.cards) document.documentElement.dataset.cards = D.defaultCards;
   if (Q.get("theme")) document.documentElement.dataset.theme = Q.get("theme");
   document.addEventListener("DOMContentLoaded", () => {
     const sw = document.createElement("nav");

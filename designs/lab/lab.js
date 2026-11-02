@@ -21,7 +21,7 @@
         <div class="slot pile">${card("Jd", "under") + card("2s")}</div>
         <div class="slot discard"><div class="ghost-slot"></div><span class="dc">0</span></div>
       </div>
-      <p class="say">Otto played 2♠ and goes again</p>
+      <p class="say">Otto 2♠</p>
       <div class="me"><div class="hand">${["4d", "4c", "5h", "Jh"].map((c) => card(c, "playable")).join("")}</div></div>
       <div class="fx" aria-hidden="true"></div>
     </div>`;
@@ -93,6 +93,10 @@
   }
   function say(stage, text, variant = "fade") {
     const p = $(stage, ".say");
+    // Minimal text: only "who played what" notes survive; everything else stays silent.
+    const m = /^(You|Otto) (?:played )?((?:10|[2-9AJQK])[♠♥♦♣](?: (?:10|[2-9AJQK])[♠♥♦♣])*)$/.exec(text);
+    text = m ? `${m[1]} ${m[2]}` : "";
+    variant = "fade";
     if (reduced || variant === "none") { p.textContent = text; return; }
     if (variant === "slide") {
       p.animate([{ transform: "none", opacity: 1 }, { transform: "translateY(-8px)", opacity: 0 }], { duration: 140, easing: EASE.in }).finished.then(() => {
@@ -120,15 +124,15 @@
       gravity: ["Gravity", "Every card on the table falls off the screen", (st) => eights(st, "gravity")],
       blackout: ["Blackout", "Lights out, 8 8 8 8 one at a time", (st) => eights(st, "blackout")],
     } },
-    { id: "nine", title: "Nine: random card", what: "\u201cTackar från Tigdikar\u201d as the deck picks a card.", options: {
-      banner: ["Banner", "Card spins out, a banner slides across", (st) => nine(st, "banner")],
-      bubble: ["Speech bubble", "The deck says it", (st) => nine(st, "bubble")],
-      marquee: ["Marquee", "Big type runs across the table once", (st) => nine(st, "marquee")],
+    { id: "nine", title: "Nine: random card", what: "Tackar från Tigdikar.", options: {
+      plaque: ["Spin and plaque", "Deck card spins, a big blue plaque holds the line", (st) => nine2(st, "plaque")],
+      title: ["Spin and title", "Two lines of large type over a dimmed table", (st) => nine2(st, "title")],
+      ribbon: ["Spin and ribbon", "The picked card turns up wearing the line as a ribbon", (st) => nine2(st, "ribbon")],
     } },
-    { id: "unlucky", title: "Unlucky ending: last card is a 2 or 10", what: "Going out on a card that makes it your turn again: illegal finish.", options: {
-      crack: ["Crack", "The card lands, splits in two and falls", (st) => unlucky(st, "crack")],
-      wrong: ["Buzzer", "Table flashes red, a heavy \u2715 lands on the card", (st) => unlucky(st, "wrong")],
-      sink: ["Sink", "Your row sinks and greys out, Last stamps in", (st) => unlucky(st, "sink")],
+    { id: "unlucky", title: "Unlucky ending: last card is a 2 or 10", what: "Illegal finish.", options: {
+      strike: ["Strike-through", "One red line draws across the card", (st) => unlucky2(st, "strike")],
+      redcard: ["Red card", "The card fills red with a white \u2715, one small shake", (st) => unlucky2(st, "redcard")],
+      spotlight: ["Spotlight", "Table dims, only the card stays lit with a red frame", (st) => unlucky2(st, "spotlight")],
     } },
     { id: "blind", title: "Blind play: face-down card", what: "Your last cards are face-down. You pick one blind.", options: {
       suspense: ["Suspense", "Lifts, holds a beat, slow 3D turn", (st) => blind(st, "suspense")],
@@ -145,16 +149,10 @@
       weight: ["Weight", "The pile slides over as one; their row dips under it", (st) => bigPickup(st, "weight")],
       counter: ["Counter", "Pile vanishes, their count rolls up to 15", (st) => bigPickup(st, "counter")],
     } },
-    { id: "reverse", title: "Reverse: odd number of 3s", what: "Play direction flips.", options: {
-      arrow: ["Arrow turns", "The direction arrow spins round", (st) => reverse(st, "arrow")],
-      mirror: ["Mirror", "The table flips left-right for a moment", (st) => reverse(st, "mirror")],
-      sweep: ["Sweep back", "A blue line sweeps the other way round", (st) => reverse(st, "sweep")],
-    } },
-    { id: "emote", title: "Targeted emotes", what: "Pick an emoji, pick a victim. Tap a player to send.", options: {
-      throw: ["Throw", "Arcs from you and splats on them", (st) => emote(st, "throw")],
-      stick: ["Stick", "Lands on their name and stays a few seconds, wobbling", (st) => emote(st, "stick")],
-      rain: ["Rain on them", "A tiny cloud parks over their row; they cry", (st) => emote(st, "rain")],
-      swarm: ["Swarm", "Five of them circle their head", (st) => emote(st, "swarm")],
+    { id: "emote", title: "Targeted emotes", what: "All three kept; each emoji brings its own effect.", options: {
+      throw: ["Throw 🍅", "Arcs over and splats on their name", (st) => emote2(st, "throw")],
+      stick: ["Stick 🤡", "Lands on their name and wobbles there", (st) => emote2(st, "stick")],
+      rain: ["Rain 😭", "A cloud over their name, drops on it, they cry", (st) => emote2(st, "rain")],
     } },
     { id: "select", title: "Selecting a card", what: "What happens when you tap a card you could play.", options: {
       lift: ["Lift", "Rises 14px", async (st) => { const c = $(st, '.hand [data-c="4d"]'); c.classList.add("sel-lift"); await wait(700); c.classList.remove("sel-lift"); }],
@@ -189,35 +187,29 @@
       block: ["As one block", "The pile slides over together, then fans out", (st) => pickup(st, { block: true })],
       quick: ["All at once, quick", "Every card moves together in 260 ms", (st) => pickup(st, { stagger: 0, duration: 260 })],
     } },
-    { id: "flip", title: "Four of a kind flips", what: "Four in a row flip the pile out of play onto the discard.", options: {
-      sequence: ["One after another", "Each card slides to the discard in turn", (st) => flipFour(st, { stagger: 110 })],
-      turnThenGo: ["Turn over, then sweep", "The cards turn face-down, then move together", (st) => flipFour(st, { turnFirst: true })],
-      sweep: ["Single sweep", "Everything moves at once, 300 ms", (st) => flipFour(st, { stagger: 0, duration: 300 })],
+    { id: "flip", title: "Four of a kind flips", what: "Four in a row: the pile is out.", options: {
+      dominoes: ["Dominoes", "They line up, tip over one after another, slide away", (st) => flip2(st, "dominoes")],
+      square: ["Lock and launch", "They snap into a square, spin as one, shoot to the discard", (st) => flip2(st, "square")],
+      countoff: ["Count off", "1, 2, 3, 4 stamped over the pile, then one sweep", (st) => flip2(st, "countoff")],
     } },
-    { id: "reveal", title: "Revealing the deck's top card", what: "Nothing to play, so you turn over the top of the deck.", options: {
-      flat: ["Flat turn", "Squeezes to a line and opens out, 320 ms", (st) => reveal(st, "flat")],
-      depth: ["Turn with depth", "A 3D turn on the vertical axis", (st) => reveal(st, "3d")],
-      lift: ["Lift and turn", "Rises off the deck first, then turns", (st) => reveal(st, "lift")],
+    { id: "reveal", title: "Revealing the deck's top card", what: "One continuous 3D motion now.", options: {
+      smooth: ["Lift and turn, smooth", "Rises and turns in a single 3D movement, 560 ms", (st) => reveal2(st, 560)],
+      quicker: ["Lift and turn, quicker", "Same motion in 400 ms", (st) => reveal2(st, 400)],
     } },
-    { id: "turn", title: "Whose turn it is", what: "How the table shows the turn moving to someone.", options: {
-      bar: ["Sliding bar", "A blue bar moves to the player", (st) => turnTo(st, "bar")],
-      tint: ["Row tint", "Their row takes a pale blue background", (st) => turnTo(st, "tint")],
-      dot: ["Dot", "A blue dot appears by the name and pulses once", (st) => turnTo(st, "dot")],
-    } },
-    { id: "say", title: "What just happened", what: "The one-line caption under the piles.", options: {
-      fade: ["Crossfade", "Old line fades out, new line in", (st) => say(st, "Otto played 5♣. Play on the card under it", "fade")],
-      slide: ["Slide up", "New line pushes the old one up", (st) => say(st, "Otto played 5♣. Play on the card under it", "slide")],
-      mark: ["Swap and underline", "Changes instantly, a blue underline fades", (st) => say(st, "Otto played 5♣. Play on the card under it", "mark")],
+    { id: "turn", title: "Whose turn, and which way", what: "Play moves round the table; three 3s reverse it.", ring: true, options: {
+      dashes: ["Flowing edge", "Dashes stream round the table edge; active seat breathes", (st) => ring(st, "dashes")],
+      chevrons: ["Chevron wave", "Chevrons between seats light up in the direction of play", (st) => ring(st, "chevrons")],
+      comet: ["Comet", "One bright streak laps the table; active seat has a moving sheen", (st) => ring(st, "comet")],
     } },
     { id: "illegal", title: "A move that isn't allowed", what: "You try to put a card where the rules don't let it go.", options: {
       shake: ["Shake", "The card shakes side to side, about 4px", (st) => illegal(st, "shake")],
       bounce: ["Bounce back", "It starts toward the pile and returns", (st) => illegal(st, "bounce")],
       flash: ["Outline flash", "A brief outline and a message, no movement", (st) => illegal(st, "flash")],
     } },
-    { id: "finish", title: "Someone finishes", what: "A player goes out and takes a place.", options: {
-      stamp: ["Stamp", "\"1st\" lands on their row with a small press", (st) => finish(st, "stamp")],
-      fadeOut: ["Step back", "The row fades back as the place appears", (st) => finish(st, "fade")],
-      slideTag: ["Slide in tag", "The place slides in from the right", (st) => finish(st, "slide")],
+    { id: "finish", title: "Someone finishes", what: "Keeps the 1st stamp look.", options: {
+      fromPile: ["From the pile", "The 1st badge rises from their last card and stamps onto their name", (st) => finish2(st, "fromPile")],
+      flap: ["Scoreboard flap", "Their row flips over like a departures board to show 1st", (st) => finish2(st, "flap")],
+      settle: ["Clear and stamp", "Their cards fade off one by one, then 1st stamps in", (st) => finish2(st, "settle")],
     } },
     { id: "pace", title: "Bot pace", what: "Time between bot moves. Plays three in a row.", options: {
       quick: ["Quick", "0.9 s per move", (st) => paced(st, 900)],
@@ -435,6 +427,245 @@
     say(st, `You \u2192 Otto ${em}`, "none");
   }
 
+  // ---------- round 2: reworked moments ----------
+  // A real two-faced 3D turn: no swapping elements halfway, so nothing jumps.
+  async function flip3d(el, faceHTML, { duration = 520, lift = 0, easing = "cubic-bezier(.45,.05,.25,1)" } = {}) {
+    const r = rectOf(el);
+    const wrap = document.createElement("div");
+    wrap.className = "flip3d";
+    Object.assign(wrap.style, { width: r.width + "px", height: r.height + "px" });
+    wrap.innerHTML = `<div class="f3-inner"><div class="f3 front"></div><div class="f3 rear">${faceHTML}</div></div>`;
+    const front = el.cloneNode(true);
+    wrap.querySelector(".front").append(front);
+    wrap.querySelectorAll(".card").forEach((c) => c.style.setProperty("--w", r.width + "px"));
+    el.replaceWith(wrap);
+    if (!reduced) await wrap.firstElementChild.animate([
+      { transform: "translateY(0) rotateY(0deg)" },
+      { transform: `translateY(${-lift}px) rotateY(90deg)`, offset: 0.5 },
+      { transform: "translateY(0) rotateY(180deg)" },
+    ], { duration, easing }).finished;
+    const t = document.createElement("div"); t.innerHTML = faceHTML;
+    const face = t.firstElementChild; wrap.replaceWith(face);
+    return face;
+  }
+  const centerIn = (st, el) => { const r = rectOf(el), s0 = rectOf(st); return { x: r.left - s0.left + r.width / 2, y: r.top - s0.top + r.height / 2, w: r.width, h: r.height, l: r.left - s0.left, t: r.top - s0.top }; };
+
+  async function nine2(st, mode) {
+    const d = $(st, ".deck .card"), f = fx(st);
+    if (!reduced) await d.animate([{ transform: "none" }, { transform: "translateY(-10px) rotate(360deg)" }, { transform: "none" }], { duration: 700, easing: EASE.soft }).finished;
+    if (mode === "plaque") {
+      f.innerHTML = `<div class="plaque">Tackar från Tigdikar</div>`;
+      if (!reduced) { await f.firstChild.animate([{ transform: "scale(.85)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 260, easing: EASE.out, fill: "forwards" }).finished; await wait(1700); await f.firstChild.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, fill: "forwards" }).finished; }
+    } else if (mode === "title") {
+      f.classList.add("veil");
+      f.innerHTML = `<div class="title2"><span>Tackar från</span><span>Tigdikar</span></div>`;
+      const [a, b] = f.querySelectorAll(".title2 span");
+      if (!reduced) {
+        f.animate([{ backgroundColor: "transparent" }, { backgroundColor: "var(--veil)" }], { duration: 250, fill: "forwards" });
+        await a.animate([{ transform: "translateY(14px)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 320, easing: EASE.out, fill: "both" }).finished;
+        await b.animate([{ transform: "translateY(14px)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 320, easing: EASE.out, fill: "both" }).finished;
+        await wait(1500);
+        await f.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: "forwards" }).finished;
+      }
+      f.classList.remove("veil"); f.getAnimations().forEach((x) => x.cancel());
+    }
+    f.innerHTML = "";
+    const face = await flip3d($(st, ".deck .card"), card("Ks"), { duration: 520, lift: 14 });
+    if (mode === "ribbon") {
+      const c = centerIn(st, face);
+      f.innerHTML = `<div class="ribbon" style="left:${c.x}px;top:${c.y}px">Tackar från Tigdikar</div>`;
+      if (!reduced) { await f.firstChild.animate([{ transform: "translate(-50%,-50%) rotate(-8deg) scaleX(0)" }, { transform: "translate(-50%,-50%) rotate(-8deg) scaleX(1)" }], { duration: 360, easing: EASE.out, fill: "forwards" }).finished; await wait(1800); }
+      f.innerHTML = "";
+    }
+    face.classList.add("picked");
+  }
+
+  async function unlucky2(st, mode) {
+    st.querySelectorAll(".hand .card").forEach((x) => x.remove());
+    $(st, ".hand").insertAdjacentHTML("beforeend", card("2h", "playable"));
+    const last = $(st, ".hand .card"), lf = rectOf(last); last.remove();
+    const t = addToPile(st, "2h"); t.style.visibility = "hidden";
+    await fly(card("2h"), lf, rectOf(t), { duration: 380 });
+    t.style.visibility = "";
+    await wait(200);
+    const f = fx(st), c = centerIn(st, t);
+    if (mode === "strike") {
+      f.innerHTML = `<i class="strike" style="left:${c.l - 6}px;top:${c.y}px;width:${c.w + 12}px"></i>`;
+      if (!reduced) await f.firstChild.animate([{ transform: "rotate(-55deg) scaleX(0)" }, { transform: "rotate(-55deg) scaleX(1)" }], { duration: 260, easing: EASE.out, fill: "forwards" }).finished;
+      t.animate([{ opacity: 1 }, { opacity: 0.45 }], { duration: 400, fill: "forwards", delay: 300 });
+      await wait(900);
+    } else if (mode === "redcard") {
+      t.classList.add("redcard");
+      t.insertAdjacentHTML("beforeend", `<span class="rx">✕</span>`);
+      if (!reduced) await t.animate([0, -5, 5, -3, 0].map((x) => ({ transform: `translateX(${x}px)` })), { duration: 300, easing: "ease-out" }).finished;
+      await wait(800);
+    } else {
+      f.innerHTML = `<i class="spot" style="left:${c.l}px;top:${c.t}px;width:${c.w}px;height:${c.h}px"></i>`;
+      if (!reduced) await f.firstChild.animate([{ boxShadow: "0 0 0 0 rgba(0,0,0,0), 0 0 0 0 #e3120b" }, { boxShadow: "0 0 0 999px rgba(0,0,0,.55), 0 0 0 3px #e3120b" }], { duration: 300, easing: EASE.out, fill: "forwards" }).finished;
+      await wait(1100);
+      if (!reduced) await f.firstChild.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: "forwards" }).finished;
+    }
+    f.innerHTML = "";
+  }
+
+  async function emote2(st, mode) {
+    const em = { throw: "🍅", stick: "🤡", rain: "😭" }[mode];
+    const f = fx(st), name = $(st, ".opp .who"), n = centerIn(st, name), h = centerIn(st, $(st, ".hand"));
+    if (mode === "throw") {
+      f.innerHTML = `<span class="emo" style="left:${h.x}px;top:${h.t}px">${em}</span>`;
+      const e = f.firstChild, dx = n.x - h.x, dy = n.y - h.t;
+      if (!reduced) await e.animate([{ transform: "translate(-50%,-50%) scale(.8) rotate(0)" }, { transform: `translate(calc(-50% + ${dx / 2}px), calc(-50% + ${dy / 2 - 70}px)) scale(1.3) rotate(220deg)`, offset: 0.5 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1) rotate(400deg)` }], { duration: 620, easing: "cubic-bezier(.3,.1,.6,1)", fill: "forwards" }).finished;
+      e.remove();
+      f.insertAdjacentHTML("beforeend", `<span class="splat" style="left:${n.x}px;top:${n.y}px"></span>`);
+      if (!reduced) { name.animate([0, -4, 4, -2, 0].map((x) => ({ transform: `translateX(${x}px)` })), { duration: 280 }); await f.lastChild.animate([{ transform: "translate(-50%,-50%) scale(.2)" }, { transform: "translate(-50%,-50%) scale(1)", offset: 0.25 }, { transform: "translate(-50%,-40%) scale(1)", opacity: 0 }], { duration: 1500, easing: EASE.out, fill: "forwards" }).finished; }
+    } else if (mode === "stick") {
+      f.innerHTML = `<span class="emo big" style="left:${n.x}px;top:${n.t - 2}px">${em}</span>`;
+      const e = f.firstChild;
+      e.style.transformOrigin = "50% 100%";
+      if (!reduced) { await e.animate([{ transform: "translate(-50%,-100%) translateY(-80px) scale(1.8)", opacity: 0 }, { transform: "translate(-50%,-100%) scale(1)", opacity: 1 }], { duration: 360, easing: EASE.snap, fill: "forwards" }).finished; await e.animate([0, -14, 11, -8, 5, 0].map((r) => ({ transform: `translate(-50%,-100%) rotate(${r}deg)` })), { duration: 2000, easing: "ease-in-out", fill: "forwards" }).finished; }
+    } else {
+      f.innerHTML = `<span class="cloud" style="left:${n.x}px;top:${n.t - 30}px">☁️</span>` + Array.from({ length: 7 }, (_, i) => `<i class="drop" style="left:${n.x - 15 + i * 5}px;top:${n.t - 16}px"></i>`).join("") + `<span class="emo sm" style="left:${n.x}px;top:${n.y + n.h / 2 + 12}px">${em}</span>`;
+      if (!reduced) {
+        f.querySelector(".cloud").animate([{ transform: "translate(-50%,-50%) translateY(-24px)", opacity: 0 }, { transform: "translate(-50%,-50%)", opacity: 1 }], { duration: 380, easing: EASE.out, fill: "forwards" });
+        name.animate([{ transform: "none" }, { transform: "translateY(2px)" }, { transform: "none" }], { duration: 600, iterations: 3, delay: 300 });
+        await Promise.all([...f.querySelectorAll(".drop")].map((d, i) => d.animate([{ transform: "translateY(0)", opacity: 0 }, { opacity: 1, offset: 0.2 }, { transform: `translateY(${n.h / 2 + 10}px)`, opacity: 0 }], { duration: 560, delay: 300 + (i * 97) % 400, iterations: 3, easing: "ease-in" }).finished));
+      }
+    }
+    await wait(250);
+    f.innerHTML = "";
+  }
+
+  async function flip2(st, mode) {
+    const pile = $(st, ".pile");
+    pile.innerHTML = ["4s", "4h", "4d", "4c"].map((c, i) => card(c, i < 3 ? "under" : "")).join("");
+    await wait(400);
+    const f = fx(st), cards = [...pile.querySelectorAll(".card")], froms = cards.map(rectOf), sr = rectOf(st);
+    const disc = rectOf($(st, ".discard .ghost-slot")), dc = $(st, ".discard .dc");
+    const w = froms[0].width;
+    // lift the four into the effect layer so they can move freely
+    f.innerHTML = cards.map((c, i) => `<div class="loose" style="left:${froms[i].left - sr.left}px;top:${froms[i].top - sr.top}px;width:${w}px">${card(c.dataset.c)}</div>`).join("");
+    f.querySelectorAll(".card").forEach((c) => c.style.setProperty("--w", w + "px"));
+    pile.innerHTML = "";
+    const L = [...f.querySelectorAll(".loose")];
+    const toDisc = (el, extra = "") => `translate(${disc.left - rectOf(el).left}px, ${disc.top - rectOf(el).top}px) ${extra}`;
+    if (!reduced) {
+      if (mode === "dominoes") {
+        const pc = froms.reduce((a, r) => a + r.left + r.width / 2, 0) / 4 - sr.left;
+        await Promise.all(L.map((el, i) => el.animate([{ transform: "none" }, { transform: `translateX(${pc + (i - 1.5) * (w * 0.62) - w / 2 - (froms[i].left - sr.left)}px)` }], { duration: 320, easing: EASE.out, fill: "forwards" }).finished));
+        await wait(160);
+        for (const el of L) { const c = el.firstElementChild; c.style.transformOrigin = "100% 100%"; c.animate([{ transform: "rotate(0)" }, { transform: "rotate(72deg)" }], { duration: 260, easing: EASE.in, fill: "forwards" }); await wait(95); }
+        await wait(320);
+        await Promise.all(L.map((el, i) => { const r = rectOf(el); const base = getComputedStyle(el).transform; return el.animate([{ transform: base, opacity: 1 }, { transform: `translate(${disc.left - r.left}px, ${disc.top - r.top}px) ${base === "none" ? "" : base}`, opacity: 0.6 }], { duration: 380, delay: i * 30, easing: EASE.soft, fill: "forwards" }).finished; }));
+      } else if (mode === "square") {
+        const cx = froms.reduce((a, r) => a + r.left + r.width / 2, 0) / 4 - sr.left, cy = froms[0].top - sr.top - w * 0.05;
+        const pos = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+        await Promise.all(L.map((el, i) => el.animate([{ transform: "none" }, { transform: `translate(${cx + pos[i][0] * (w / 2 + 2) - (froms[i].left - sr.left) - w / 2}px, ${cy + pos[i][1] * (w * 0.62) - (froms[i].top - sr.top) + w * 0.2}px) scale(.8)` }], { duration: 300, easing: EASE.snap, fill: "forwards" }).finished));
+        await wait(120);
+        const box = document.createElement("div"); box.className = "spinbox"; box.style.transformOrigin = `${cx}px ${cy + w * 0.2}px`;
+        f.append(box); L.forEach((el) => box.append(el));
+        await box.animate([{ transform: "rotate(0)" }, { transform: "rotate(-8deg) scale(1.05)", offset: 0.2 }, { transform: "rotate(180deg)" }], { duration: 520, easing: EASE.soft, fill: "forwards" }).finished;
+        const br = rectOf(box.firstElementChild);
+        await box.animate([{ transform: "rotate(180deg)" }, { transform: `translate(${disc.left - br.left}px, ${disc.top - br.top}px) rotate(180deg) scale(.5)`, opacity: 0.2 }], { duration: 380, easing: EASE.in, fill: "forwards" }).finished;
+      } else {
+        for (let i = 0; i < 4; i++) {
+          L[i].animate([{ transform: "none" }, { transform: "translateY(-12px)" }, { transform: "none" }], { duration: 260, easing: EASE.out });
+          f.insertAdjacentHTML("beforeend", `<span class="count-n" style="left:${froms[3].left - sr.left + w / 2}px;top:${froms[3].top - sr.top + w * 0.7}px">${i + 1}</span>`);
+          const n = f.lastElementChild;
+          n.animate([{ transform: "translate(-50%,-50%) scale(1.8)", opacity: 0 }, { transform: "translate(-50%,-50%) scale(1)", opacity: 1, offset: 0.3 }, { transform: "translate(-50%,-50%) scale(1)", opacity: 0 }], { duration: 360, fill: "forwards" });
+          await wait(300);
+        }
+        await Promise.all(L.map((el) => { const r = rectOf(el); return el.animate([{ transform: "none" }, { transform: `translate(${disc.left - r.left}px, ${disc.top - r.top}px)` }], { duration: 300, easing: EASE.soft, fill: "forwards" }).finished; }));
+      }
+    }
+    dc.textContent = "4"; $(st, ".discard").classList.add("has");
+    f.innerHTML = ""; f.getAnimations().forEach((a) => a.cancel());
+  }
+
+  async function reveal2(st, duration) {
+    await flip3d($(st, ".deck .card"), card("7s"), { duration, lift: 22 });
+  }
+
+  async function finish2(st, mode) {
+    const opp = $(st, ".opp"), name = $(st, ".opp .who"), f = fx(st);
+    if (mode === "fromPile") {
+      const top = $(st, ".pile .card:last-child"), a = centerIn(st, top), n = centerIn(st, name);
+      $(st, ".opp-cards").innerHTML = ""; $(st, ".opp .count b").textContent = "0";
+      f.innerHTML = `<span class="place fly" style="left:${a.x}px;top:${a.y}px">1st</span>`;
+      const b = f.firstChild;
+      if (!reduced) {
+        await b.animate([{ transform: "translate(-50%,-50%) scale(.6)", opacity: 0 }, { transform: "translate(-50%,-50%) translateY(-18px) scale(1.15)", opacity: 1 }], { duration: 260, easing: EASE.out, fill: "forwards" }).finished;
+        await b.animate([{ transform: "translate(-50%,-50%) translateY(-18px) scale(1.15)" }, { transform: `translate(calc(-50% + ${n.x - a.x + n.w / 2 + 26}px), calc(-50% + ${n.y - a.y}px)) scale(1.5)`, offset: 0.8 }, { transform: `translate(calc(-50% + ${n.x - a.x + n.w / 2 + 26}px), calc(-50% + ${n.y - a.y}px)) scale(1)` }], { duration: 520, easing: EASE.soft, fill: "forwards" }).finished;
+      }
+      f.innerHTML = ""; name.insertAdjacentHTML("afterend", `<span class="place">1st</span>`);
+    } else if (mode === "flap") {
+      if (!reduced) await opp.animate([{ transform: "perspective(500px) rotateX(0)" }, { transform: "perspective(500px) rotateX(90deg)" }], { duration: 220, easing: EASE.in, fill: "forwards" }).finished;
+      $(st, ".opp-cards").innerHTML = ""; $(st, ".opp .count b").textContent = "0"; name.insertAdjacentHTML("afterend", `<span class="place">1st</span>`);
+      opp.getAnimations().forEach((x) => x.cancel());
+      if (!reduced) await opp.animate([{ transform: "perspective(500px) rotateX(-90deg)" }, { transform: "perspective(500px) rotateX(8deg)", offset: 0.75 }, { transform: "perspective(500px) rotateX(0)" }], { duration: 380, easing: EASE.out }).finished;
+    } else {
+      const cs = [...st.querySelectorAll(".opp-cards .card")];
+      for (const c of cs) { if (!reduced) c.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(-10px)" }], { duration: 240, fill: "forwards" }); await wait(130); }
+      await wait(200);
+      $(st, ".opp-cards").innerHTML = ""; $(st, ".opp .count b").textContent = "0";
+      name.insertAdjacentHTML("afterend", `<span class="place">1st</span>`);
+      if (!reduced) await $(st, ".opp .place").animate([{ transform: "scale(1.6)", opacity: 0 }, { transform: "scale(.94)", opacity: 1, offset: 0.7 }, { transform: "scale(1)" }], { duration: 360, easing: EASE.out }).finished;
+    }
+    await wait(500);
+  }
+
+  // ---------- the turn / direction table ----------
+  function ringHTML() {
+    return `<div class="stage ringstage">
+      <svg class="loop" aria-hidden="true"><rect class="track" x="6" y="6" rx="14" ry="14"></rect><rect class="flow" x="6" y="6" rx="14" ry="14" pathLength="100"></rect></svg>
+      <div class="rseats"><div class="rs" data-s="1"><b>Otto</b></div><div class="rs" data-s="2"><b>Pip</b></div><div class="rs" data-s="3"><b>Fern</b></div></div>
+      <div class="rmid">${back()}${card("2s")}</div>
+      <div class="rs me" data-s="0"><b>You</b></div>
+      <div class="chev" aria-hidden="true"><i data-p="0">‹</i><i data-p="1">›</i><i data-p="2">›</i><i data-p="3">›</i></div>
+      <div class="fx" aria-hidden="true"></div>
+    </div>`;
+  }
+  let ringStop = null;
+  function stopRing() { if (ringStop) ringStop(); ringStop = null; }
+  async function ring(st, mode) {
+    const svg = $(st, "svg.loop"), r = rectOf(st);
+    svg.setAttribute("viewBox", `0 0 ${r.width} ${r.height}`);
+    svg.querySelectorAll("rect").forEach((x) => { x.setAttribute("width", r.width - 12); x.setAttribute("height", r.height - 12); });
+    st.classList.add("mode-" + mode);
+    const flow = $(st, "rect.flow");
+    // Seat order clockwise from you: You (bottom) -> Otto -> Pip -> Fern (top, left to right) -> You.
+    let dir = 1, cur = 0, alive = true;
+    ringStop = () => { alive = false; };
+    let anim = null;
+    if (mode === "dashes") anim = flow.animate([{ strokeDashoffset: 0 }, { strokeDashoffset: -100 }], { duration: 6000, iterations: Infinity });
+    if (mode === "comet") anim = flow.animate([{ strokeDashoffset: 0 }, { strokeDashoffset: -100 }], { duration: 3200, iterations: Infinity });
+    const setTurn = (i) => { st.querySelectorAll(".rs").forEach((x) => x.classList.toggle("active", +x.dataset.s === i)); };
+    const chevs = [...st.querySelectorAll(".chev i")];
+    const wave = () => { if (mode !== "chevrons") return; chevs.forEach((c, i) => c.animate([{ opacity: .25 }, { opacity: 1 }, { opacity: .25 }], { duration: 900, delay: ((dir > 0 ? i : 3 - i) * 160), easing: "ease-in-out" })); };
+    async function rate(to) {
+      if (!anim || reduced) return;
+      const from = anim.playbackRate, t0 = performance.now(), D = 700;
+      await new Promise((res) => { const step = (t) => { const k = Math.min(1, (t - t0) / D), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; anim.updatePlaybackRate(from + (to - from) * e); k < 1 ? requestAnimationFrame(step) : res(); }; requestAnimationFrame(step); });
+    }
+    setTurn(cur);
+    for (let step = 0; step < 7 && alive; step++) {
+      wave();
+      await wait(1350);
+      if (!alive) break;
+      if (step === 3) {
+        // three 3s land: direction reverses
+        $(st, ".rmid").lastElementChild.outerHTML = card("3s");
+        st.classList.add("reversing");
+        dir = -dir;
+        chevs.forEach((c) => c.classList.toggle("rev", dir < 0));
+        await rate(dir);
+        st.classList.remove("reversing");
+      }
+      cur = (cur + dir + 4) % 4;
+      setTurn(cur);
+    }
+    if (anim) anim.cancel();
+  }
+
   // ---------- demo bodies ----------
   async function playMine(st, { duration, arc = 0, rotate = 0, thump = false }) {
     const c = $(st, '.hand [data-c="4d"]');
@@ -447,7 +678,7 @@
     await fly(card("4d"), from, rectOf(target), { duration, arc, rotate });
     target.style.visibility = "";
     if (thump && !reduced) await $(st, ".pile").animate([{ transform: "scale(1)" }, { transform: "scale(.96)" }, { transform: "scale(1)" }], { duration: 180, easing: "ease-out" }).finished;
-    say(st, "You played 4♦");
+    say(st, "You 4♦");
   }
   async function oppPlays(st, { flipAt = null, duration = 500, arc = 0, appear = false }) {
     const from = rectOf($(st, ".opp-cards .card:last-child"));
@@ -460,7 +691,7 @@
       await fly(html, from, rectOf(t), { duration, arc, flipAt, faceHTML: card("5c") });
       t.style.visibility = "";
     }
-    say(st, "Otto played 5♣");
+    say(st, "Otto 5♣");
   }
   async function drawMine(st, { flip, appear }) {
     const hand = $(st, ".hand");
@@ -566,21 +797,30 @@
     }
   }
 
+  // Picked by the user (round 1 of the lab); shown collapsed.
+  const LOCKED = { attack: "slam", eights: "blackout", blind: "peek", win: "squares", bigpickup: "avalanche", select: "grow", play: "thump", opp: "arcFlip", draw: "flyFlip", reflow: "spring", pickup: "stream", illegal: "bounce", pace: "steady" };
+
   // ---------- page ----------
   const KEY = "ibflip:lab-picks";
   let picks = {};
   try { picks = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (_) {}
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(picks)); } catch (_) {} summary(); };
 
+  const optHTML = (d, k, name, note) => `
+        <label class="opt"><input type="radio" name="${d.id}" value="${k}" ${picks[d.id] === k ? "checked" : ""}><span class="nm">${name}</span><span class="nt">${note}</span><button class="btn run" data-demo="${d.id}" data-opt="${k}">Play</button></label>`;
   function render() {
-    const list = document.getElementById("demos");
-    list.innerHTML = DEMOS.map((d) => `<section class="demo" id="${d.id}">
+    Object.entries(LOCKED).forEach(([k, v]) => { if (!picks[k] || !picks.__v2) picks[k] = v; });
+    picks.__v2 = true;
+    const open = DEMOS.filter((d) => !LOCKED[d.id]), done = DEMOS.filter((d) => LOCKED[d.id]);
+    const sec = (d) => `<section class="demo${LOCKED[d.id] ? " locked" : ""}" id="${d.id}">
       <header><h2>${d.title}</h2><p>${d.what}</p></header>
-      <div class="stage-wrap">${stageHTML()}</div>
-      <div class="opts" role="radiogroup" aria-label="${d.title}">${Object.entries(d.options).map(([k, [name, note]]) => `
-        <label class="opt"><input type="radio" name="${d.id}" value="${k}" ${picks[d.id] === k ? "checked" : ""}><span class="nm">${name}</span><span class="nt">${note}</span><button class="btn run" data-demo="${d.id}" data-opt="${k}">Play</button></label>`).join("")}
+      <div class="stage-wrap">${d.ring ? ringHTML() : stageHTML()}</div>
+      <div class="opts" role="radiogroup" aria-label="${d.title}">${LOCKED[d.id]
+        ? optHTML(d, LOCKED[d.id], ...d.options[LOCKED[d.id]]) + `<details><summary>Other options</summary>${Object.entries(d.options).filter(([k]) => k !== LOCKED[d.id]).map(([k, [n, t]]) => optHTML(d, k, n, t)).join("")}</details>`
+        : Object.entries(d.options).map(([k, [name, note]]) => optHTML(d, k, name, note)).join("")}
       </div>
-    </section>`).join("");
+    </section>`;
+    document.getElementById("demos").innerHTML = `<h2 class="group">Reworked: pick again</h2>` + open.map(sec).join("") + `<h2 class="group">Already picked</h2>` + done.map(sec).join("");
     summary();
   }
   const running = new WeakSet();
@@ -588,13 +828,15 @@
     const sec = document.getElementById(id);
     if (running.has(sec)) return;
     running.add(sec);
-    sec.querySelector(".stage-wrap").innerHTML = stageHTML();
+    const demo = DEMOS.find((d) => d.id === id);
+    stopRing();
+    sec.querySelector(".stage-wrap").innerHTML = demo.ring ? ringHTML() : stageHTML();
     await wait(60);
     try { await DEMOS.find((d) => d.id === id).options[opt][2](sec.querySelector(".stage")); } finally { running.delete(sec); }
   }
   function summary() {
     const out = DEMOS.map((d) => `${d.title}: ${picks[d.id] ? d.options[picks[d.id]][0] : "(no pick)"}`).join("\n");
-    const sp = ["density", "cards"].map((k) => `${k === "density" ? "Spacing" : "Card size"}: ${picks[k] || "(no pick)"}`).join("\n");
+    const sp = ["density", "cards"].map((k) => `${k === "density" ? "Spacing" : "Card size"}: ${picks[k] || (k === "density" ? "regular" : "large")}`).join("\n");
     document.getElementById("summary").value = out + "\n" + sp;
   }
 
@@ -615,8 +857,8 @@
   document.addEventListener("change", (e) => { if (e.target.matches(".opt input")) { picks[e.target.name] = e.target.value; save(); } });
   document.addEventListener("DOMContentLoaded", () => {
     render();
-    ["density", "cards"].forEach((k) => document.querySelectorAll(`[data-space^="${k}:"]`).forEach((x) => x.setAttribute("aria-pressed", x.dataset.space === `${k}:${picks[k] || (k === "density" ? "regular" : "medium")}`)));
+    ["density", "cards"].forEach((k) => document.querySelectorAll(`[data-space^="${k}:"]`).forEach((x) => x.setAttribute("aria-pressed", x.dataset.space === `${k}:${picks[k] || (k === "density" ? "regular" : "large")}`)));
     const f = document.getElementById("preview");
-    f.src = `../blue/?density=${picks.density || "regular"}&cards=${picks.cards || "medium"}&embed=1#table`;
+    f.src = `../blue/?density=${picks.density || "regular"}&cards=${picks.cards || "large"}&embed=1#table`;
   });
 })();
