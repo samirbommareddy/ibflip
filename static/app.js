@@ -76,7 +76,7 @@ const S = {
   code: null, token: null, seat: null, ws: null, room: null, game: null,
   queue: [], busy: false, selected: null, sound: store.get("ibflip:sound") !== "off",
   lastGameNo: 0, resultShownFor: null, lastFlipRank: null, reconnectTimer: null, pendingAction: false,
-  liveShown: [], speed: 1, groupSlot: null, dealing: false, autoGroup: null, fast: false, catchUp: false,
+  liveShown: [], speed: 1, nextAction: null, lastSig: "", groupSlot: null, dealing: false, autoGroup: null, fast: false, catchUp: false,
 };
 
 // ===================================================================== sound
@@ -264,8 +264,8 @@ async function api(path, body) {
 // show a calm notice with a one-click way back into a game.
 function roomLost() {
   const quick = S.quick;
-  if (S.code) store.del(`ibflip:room:${S.code}`);
-  leaveRoom();
+  if (S.code) store.del(ROOM_KEY(S.code));
+  leaveRoom({ notify: false });
   $("#homeError").textContent = "";
   const n = Number(segVal("botCount") || 3), level = LEVEL_NAME[segVal("botLevel") || "medium"];
   $("#lostText").textContent = quick
@@ -295,10 +295,11 @@ async function createRoom() {
   try { enterRoom(await api("/api/rooms", { name: playerName() })); }
   catch (e) { $("#homeError").textContent = e.message; } finally { busyHome(false); }
 }
+const normCode = (c) => String(c || "").replace(/[^a-z]/gi, "").toUpperCase();
 async function joinRoom(code) {
   Sound.unlock();
-  code = (code || "").trim().toUpperCase();
-  if (code.length !== 4) { $("#homeError").textContent = "Room codes have 4 letters."; return; }
+  code = normCode(code);
+  if (!/^[A-Z]{6}$/.test(code)) { $("#homeError").textContent = "Room codes have 6 letters."; return; }
   busyHome(true); $("#homeError").textContent = "";
   try { enterRoom(await api(`/api/rooms/${code}/join`, { name: playerName() })); }
   catch (e) { $("#homeError").textContent = e.message; } finally { busyHome(false); }
@@ -309,11 +310,15 @@ function enterRoom({ code, token, seat }, quick = false) {
   history.replaceState(null, "", `?room=${code}`);
   connect();
 }
-function leaveRoom() {
-  if (S.ws) { S.ws.onclose = null; S.ws.close(); }
+function leaveRoom({ notify = true } = {}) {
+  if (S.ws) {
+    if (notify && S.ws.readyState === 1) { try { S.ws.send(JSON.stringify({ type: "leave" })); } catch (_) {} }
+    S.ws.onclose = null; S.ws.onmessage = null; S.ws.close();
+  }
+  if (notify && S.code) store.del(ROOM_KEY(S.code));
   clearTimeout(S.reconnectTimer);
   reconnects = 0;
-  Object.assign(S, { code: null, token: null, seat: null, ws: null, room: null, game: null, queue: [], busy: false, resultShownFor: null, pendingAction: false, autoGroup: null });
+  Object.assign(S, { code: null, token: null, seat: null, ws: null, room: null, game: null, queue: [], busy: false, resultShownFor: null, pendingAction: false, nextAction: null, lastSig: "", autoGroup: null });
   clearInterval(S.pingTimer);
   $("#fx").innerHTML = "";
   $("#seats").innerHTML = "";
@@ -339,11 +344,12 @@ function connect() {
     if (msg.type === "state") { S.queue.push(msg); pump(); }
     else if (msg.type === "error") {
       if (msg.fatal && /room not found/i.test(msg.message || "")) roomLost();
-      else if (msg.fatal) { store.del(`ibflip:room:${S.code}`); leaveRoom(); $("#homeError").textContent = friendlyError(msg.message); }
-      else { toast(`<b>Hmm.</b> ${esc(msg.message)}`, "bad"); S.pendingAction = false; renderGame(); }
+      else if (msg.fatal) { store.del(ROOM_KEY(S.code)); leaveRoom({ notify: false }); $("#homeError").textContent = friendlyError(msg.message); }
+      else { toast(`<b>Hmm.</b> ${esc(msg.message)}`, "bad"); S.pendingAction = false; S.nextAction = null; clearTimeout(S.pendingTimer); renderGame(); }
     } else if (msg.type === "emote" || msg.type === "chat") bubble(msg.seat, msg.text, msg.type === "chat");
     else if (msg.type === "hint") showHint(msg.action);
-    else if (msg.type === "kicked") { leaveRoom(); $("#homeError").textContent = "You were removed from the room."; }
+    else if (msg.type === "left" || msg.type === "pong") { /* acknowledged */ }
+    else if (msg.type === "kicked") { store.del(ROOM_KEY(S.code)); leaveRoom({ notify: false }); $("#homeError").textContent = "You were removed from the room."; }
   };
   ws.onclose = () => {
     if (S.ws !== ws || !S.code) return;
@@ -364,11 +370,30 @@ function send(msg) {
   if (S.ws && S.ws.readyState === 1) S.ws.send(JSON.stringify(msg));
 }
 function act(action) {
-  if (S.pendingAction) return;
+  if (S.pendingAction) { S.nextAction = action; return; }
+  if (!isLegalNow(action)) return;
   S.pendingAction = true;
+  S.pendingAt = Date.now();
   Sound.unlock();
   send({ type: "action", action });
+  // Safety net: never leave the table unclickable if a reply goes missing.
+  clearTimeout(S.pendingTimer);
+  S.pendingTimer = setTimeout(() => { if (S.pendingAction && Date.now() - S.pendingAt >= 7900) { S.pendingAction = false; S.nextAction = null; S.game && renderGame(); } }, 8000);
 }
+function isLegalNow(action) {
+  const g = S.game;
+  if (!g || g.status !== "playing" || g.current !== S.seat) return false;
+  const L = g.legal || {};
+  if (action < 52) return (L.cards || []).includes(action);
+  if (action === A_PICKUP) return !!L.pick_up;
+  if (action === A_REVEAL) return !!L.reveal;
+  if (action === A_END) return !!L.end_group;
+  if (action >= A_FACEDOWN) return (L.face_down || []).includes(action - A_FACEDOWN);
+  return false;
+}
+// What counts as "the game moved": presence/connect broadcasts also send
+// state, and must not release a click that is still in flight.
+const gameSig = (g) => (g ? JSON.stringify([g.status, g.current, g.live, g.group_count, g.hand, g.draw_count, g.discard_count, g.players.map((p) => [p.hand_count, p.face_up, p.face_down, p.place])]) : "");
 
 // ========================================================== state pump
 async function pump() {
@@ -400,7 +425,11 @@ async function pump() {
 async function apply(msg) {
   const firstDeal = msg.game && msg.room.game_no !== S.lastGameNo;
   const prevCurrent = S.game?.current;
-  S.room = msg.room; S.seat = msg.you; S.game = msg.game || null; S.pendingAction = false;
+  const sig = gameSig(msg.game);
+  const moved = sig !== S.lastSig;
+  S.lastSig = sig;
+  S.room = msg.room; S.seat = msg.you; S.game = msg.game || null;
+  if (moved || !S.game || S.game.current !== S.seat) { S.pendingAction = false; clearTimeout(S.pendingTimer); }
   if (msg.room.status === "lobby" || !msg.game) {
     S.lastGameNo = msg.room.game_no;
     $("#resultOverlay").classList.add("hidden");
@@ -421,6 +450,12 @@ async function apply(msg) {
   if (S.game.current === S.seat && prevCurrent !== S.seat && S.game.status === "playing") {
     Sound.turn();
   }
+  // Replay a click made while the previous action was in flight, if it is
+  // still legal in this state (otherwise it is quietly dropped).
+  if (!S.pendingAction && S.nextAction !== null && S.nextAction !== undefined) {
+    const a = S.nextAction; S.nextAction = null;
+    if (isLegalNow(a)) setTimeout(() => act(a), 0);
+  }
   document.title = S.game.current === S.seat && S.game.status === "playing" ? "● Your turn — IB-Flip" : "IB-Flip";
   if (S.game.status === "over" && S.resultShownFor !== S.room.game_no) {
     S.resultShownFor = S.room.game_no;
@@ -437,8 +472,8 @@ function renderLobby() {
   list.innerHTML = "";
   r.seats.forEach((s, i) => {
     const li = document.createElement("li");
-    li.className = "seat-item";
-    const sub = s.kind === "bot" ? `Bot · ${LEVEL_NAME[s.level]}` : s.connected ? (i === S.seat ? "You" : "Online") : "Away";
+    li.className = `seat-item ${s.left ? "left" : ""}`;
+    const sub = s.left ? "Left" : s.kind === "bot" ? `Bot · ${LEVEL_NAME[s.level] ?? ""}` : s.connected ? (i === S.seat ? "You" : "Online") : "Away";
     li.innerHTML = `<div class="avatar">${esc(s.avatar ?? "")}<span class="dot ${s.connected ? "" : "off"}"></span></div>
       <div class="who"><b>${esc(s.name)}${s.host ? " 👑" : ""}</b><small>${esc(sub)}</small></div>`;
     if (host && s.kind === "bot") {
@@ -450,7 +485,7 @@ function renderLobby() {
     if (host && i !== S.seat) {
       const x = document.createElement("button");
       x.className = "x"; x.title = "Remove"; x.textContent = "✕";
-      x.addEventListener("click", () => send({ type: "remove", seat: i }));
+      x.addEventListener("click", () => send({ type: "remove", seat: i, name: s.name }));
       li.append(x);
     }
     list.append(li);
@@ -536,7 +571,7 @@ function renderSeats() {
     el.classList.toggle("finished", hasPlace(p));
     el.classList.toggle("ready", g.status === "fixing" && p.ready);
     el.classList.toggle("ready-wait", g.status === "fixing" && !p.ready);
-    const sub = esc(s.kind === "bot" ? LEVEL_NAME[s.level] ?? "" : s.connected ? "" : "away");
+    const sub = esc(s.left ? "left" : s.kind === "bot" ? LEVEL_NAME[s.level] ?? "" : s.connected ? "" : "away");
     setHTML($(".seat-head", el), `<div class="avatar">${esc(s.avatar ?? "🙂")}${s.kind === "human" ? `<span class="dot ${s.connected ? "" : "off"}"></span>` : ""}</div>
         <div class="seat-text"><div class="seat-name">${esc(s.name ?? "Player")}</div><div class="seat-sub">${sub}</div></div>${hasPlace(p) ? `<span class="place-badge ${finishOf(p) === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span>` : ""}`);
     const backs = Math.min(p.hand_count, 6);
@@ -808,8 +843,7 @@ function wireTable() {
   $("#livePile").addEventListener("click", () => $("#livePile").classList.contains("clickable") && act(A_PICKUP));
 }
 function playCard(el, id) {
-  if (S.pendingAction) return;
-  el.classList.add("pending");
+  if (!S.pendingAction) el.classList.add("pending");
   act(id);
 }
 
@@ -1094,6 +1128,16 @@ async function animateEvents(events, prev, next) {
         await nap(300 * S.speed);
         break;
       }
+      case "autopilot": {
+        const why = e.reason;
+        const text = me
+          ? (why === "idle" ? "Took too long — Shark played for you" : "You were away — Shark played for you")
+          : why === "left" ? `${nameOf(who)} left — a bot is finishing for them`
+          : why === "away" ? `${nameOf(who)} is away — autoplaying`
+          : `${nameOf(who)} took too long — autoplaying`;
+        toast(text, "calm");
+        break;
+      }
       case "reverse":
         callout("Reverse!");
         $("#dirRing").classList.toggle("ccw", e.direction === -1);
@@ -1126,10 +1170,10 @@ async function animateEvents(events, prev, next) {
     }
     if (nextCard !== undefined) {
       S.autoGroup.queue = S.autoGroup.queue.filter((c) => c !== nextCard);
-      setTimeout(() => { S.pendingAction = false; act(nextCard); }, 30);
+      setTimeout(() => act(nextCard), 30);
     } else if (next.legal?.end_group) {
       S.autoGroup = null;
-      setTimeout(() => { S.pendingAction = false; act(A_END); }, 30);
+      setTimeout(() => act(A_END), 30);
     }
   } else if (S.autoGroup && next.group_rank !== S.autoGroup.rank) S.autoGroup = null;
 }
@@ -1332,7 +1376,7 @@ function boot() {
   wire();
   buildRules();
   wakeServer();
-  const code = new URLSearchParams(location.search).get("room");
+  const code = normCode(new URLSearchParams(location.search).get("room"));
   if (code) {
     const saved = store.json(ROOM_KEY(code.toUpperCase()));
     if (saved) { S.code = code.toUpperCase(); S.token = saved.token; S.seat = saved.seat; S.quick = !!saved.quick; connect(); return; }
