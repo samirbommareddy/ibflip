@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from ibflip.ai.agents import HeuristicAgent, MLPPolicy, RandomAgent, heuristic_fix  # noqa: E402
-from ibflip.ai.arena import evaluate, score  # noqa: E402
+from ibflip.ai.arena import evaluate, game_result, score  # noqa: E402
 from ibflip.ai.observation import (  # noqa: E402
     NUM_COMPACT_ACTIONS,
     NUM_RANKS,
@@ -165,8 +165,8 @@ def rollout_worker(args) -> dict:
                     a, _ = sample(seat, obs, mask, rng)
             engine.step(prng.choice(mapping[a]), validate=False)
             steps += 1
-        result = {"winner": engine.state.winner, "loser": engine.state.loser}
-        timed_out = result["winner"] is None and result["loser"] is None
+        result = game_result(engine)
+        timed_out = engine.state.phase is not Phase.GAME_OVER
         for i, idxs in traj.items():
             if idxs:
                 episodes.append(idxs)

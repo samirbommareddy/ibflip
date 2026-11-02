@@ -15,7 +15,15 @@ from ibflip.actions import (
     ACTION_REVEAL_DRAW_PILE_TOP,
     FACE_DOWN_ACTIONS,
 )
-from ibflip.state import PendingKind, Phase
+from ibflip.state import FinishStatus, PendingKind, Phase
+
+
+# How a player left the game ("legal" | "illegal" | "eights"), None if playing.
+_FINISH = {
+    FinishStatus.LEGAL_WIN: "legal",
+    FinishStatus.ILLEGAL_LOSS: "illegal",
+    FinishStatus.EIGHTS_LOSS: "eights",
+}
 
 
 def serialize_event(event: dict[str, Any]) -> dict[str, Any]:
@@ -37,7 +45,8 @@ def serialize_view(engine: IBFlipEngine, seat: int | None, status: str) -> dict[
             "face_up": [list(slot) for slot in player.face_up_slots],
             "face_down": [card is not None for card in player.face_down_slots],
             "active": player.active,
-            "finish": player.finish_status.name if player.finish_status else None,
+            "finish": _FINISH.get(player.finish_status),
+            "place": player.place,
             "ready": player.fixing_done,
         }
         if over:

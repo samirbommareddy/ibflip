@@ -21,8 +21,9 @@ class PendingKind(Enum):
 
 
 class FinishStatus(Enum):
-    LEGAL_WIN = auto()
-    ILLEGAL_LOSS = auto()
+    LEGAL_WIN = auto()  # finished legally
+    ILLEGAL_LOSS = auto()  # finished illegally
+    EIGHTS_LOSS = auto()  # flipped the 8s
 
 
 @dataclass
@@ -36,6 +37,9 @@ class TurnContext:
     open_group_rank: Rank | None = None
     played_card_ids: list[int] = field(default_factory=list)
     source: str | None = None
+    # Face-up slot the play group draws from: only cards stacked together in
+    # one slot may be played as a group.
+    face_up_slot: int | None = None
 
 
 @dataclass
@@ -45,6 +49,9 @@ class Player:
     face_down_slots: list[int | None] = field(default_factory=list)
     active: bool = True
     finish_status: FinishStatus | None = None
+    # Final placement, 1 = best. Set when the player finishes (or is the last
+    # one left); None while still playing.
+    place: int | None = None
     fixing_done: bool = False
     # Cards in ``hand`` that every player has seen enter it (picked-up live
     # pile, failed reveals, dealt 3s, cards swapped out of face-up slots...).
@@ -74,3 +81,6 @@ class GameState:
     required_start_card_id: int | None = None
     fix_selected_card_id: int | None = None
     ace_as_one_card_ids: list[int] = field(default_factory=list)
+    # A 5 on top of the pile promoted by a 9s flip is played on zero rather
+    # than on the card beneath it (Special Flip Rules, 9).
+    five_on_zero_card_id: int | None = None

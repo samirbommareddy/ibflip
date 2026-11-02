@@ -23,7 +23,7 @@ from ibflip.cards import RANK_INDEX_BY_ID
 from ibflip.engine import IBFlipEngine
 from ibflip.state import Phase
 from ibflip.ai.agents import MLPPolicy, NeuralAgent, heuristic_fix
-from ibflip.ai.arena import score
+from ibflip.ai.arena import game_result, score
 from ibflip.ai.observation import compact_legal, encode, resolve_forced
 from ibflip.ai.search import determinize
 
@@ -54,7 +54,7 @@ def policy_playout(engine: IBFlipEngine, policy: MLPPolicy, rng: random.Random, 
                 a = int(np_rng.choice(len(p), p=p / p.sum()))
         engine.step(rng.choice(mapping[a]), validate=False)
         steps += 1
-    return {"winner": engine.state.winner, "loser": engine.state.loser}
+    return game_result(engine)
 
 
 class PimcAgent(NeuralAgent):

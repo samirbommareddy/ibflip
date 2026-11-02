@@ -123,7 +123,7 @@ def test_flipping_eights_makes_flipper_lose():
     engine.step(fourth)
     engine.step(ACTION_END_PLAY_GROUP)
 
-    assert engine.state.players[0].finish_status is FinishStatus.ILLEGAL_LOSS
+    assert engine.state.players[0].finish_status is FinishStatus.EIGHTS_LOSS
     assert engine.state.loser == 0
     assert engine.state.phase is Phase.GAME_OVER
 

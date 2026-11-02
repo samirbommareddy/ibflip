@@ -31,6 +31,13 @@ from ibflip.rules import FOUR_LOOP_RANK_MASK, can_play_on_index
 from ibflip.state import FinishStatus, GameState, PendingEffect, PendingKind, Phase, Player, TurnContext
 
 
+_FINISH_NAMES = {
+    FinishStatus.LEGAL_WIN: "legal",
+    FinishStatus.ILLEGAL_LOSS: "illegal",
+    FinishStatus.EIGHTS_LOSS: "eights",
+}
+
+
 class IllegalActionError(ValueError):
     pass
 
@@ -113,9 +120,13 @@ class IBFlipEngine:
             return self._fixing_legal_action_indices()
 
         if state.turn_context.open_group_rank is not None:
+            candidates = self._playable_source_card_ids()
+            slot_index = state.turn_context.face_up_slot
+            if slot_index is not None and self._active_source() == "face_up":
+                candidates = self._current_player().face_up_slots[slot_index]
             legal = [
                 candidate
-                for candidate in self._playable_source_card_ids()
+                for candidate in candidates
                 if RANK_INDEX_BY_ID[candidate] == int(state.turn_context.open_group_rank)
             ]
             if state.turn_context.played_card_ids:
@@ -140,10 +151,11 @@ class IBFlipEngine:
             if self._is_legal_card_play_with_context(candidate, target_rank, required_start, is_start_turn, is_four_loop):
                 playable.append(candidate)
 
-        if self._can_reveal_draw_pile(playable):
+        can_reveal = self._can_reveal_draw_pile(playable)
+        can_pick_up = self._can_pick_up(playable)
+        if can_reveal:
             playable.append(ACTION_REVEAL_DRAW_PILE_TOP)
-
-        if self._can_pick_up(playable):
+        if can_pick_up:
             playable.append(ACTION_PICK_UP_LIVE_PILE)
 
         return playable
@@ -164,9 +176,8 @@ class IBFlipEngine:
             else:
                 self._play_card(action)
         elif action == ACTION_PICK_UP_LIVE_PILE:
-            if not (self.state.pending and self.state.pending.kind is PendingKind.FOUR_LOOP):
-                # Forced pickup: they had nothing playable on this target.
-                self._record_lacks(self.state.current_player)
+            # Pickup is only legal with nothing playable on this target.
+            self._record_lacks(self.state.current_player)
             self._pick_up_live_pile(self.state.current_player)
             self._advance_to_next_player()
         elif action == ACTION_REVEAL_DRAW_PILE_TOP:
@@ -405,44 +416,73 @@ class IBFlipEngine:
         state = self.state
         if not state.live_cards:
             return None
-        top = state.live_cards[-1]
-        if top in state.ace_as_one_card_ids:
+        # "When a 5 is played, the next player must play on the card beneath
+        # the 5. If the 5 is the only card in the live cards, the next player
+        # plays on zero." Several 5s in a row are all seen through.
+        index = len(state.live_cards) - 1
+        while index >= 0 and RANK_INDEX_BY_ID[state.live_cards[index]] == int(Rank.FIVE):
+            if state.live_cards[index] == state.five_on_zero_card_id:
+                return None
+            index -= 1
+        if index < 0:
             return None
-        if self.rank(top) is Rank.FIVE:
-            if len(state.live_cards) == 1:
-                return None
-            beneath = state.live_cards[-2]
-            if beneath in state.ace_as_one_card_ids:
-                return None
-            return RANK_INDEX_BY_ID[beneath]
-        return RANK_INDEX_BY_ID[top]
+        card = state.live_cards[index]
+        if card in state.ace_as_one_card_ids:
+            return None
+        return RANK_INDEX_BY_ID[card]
 
     def _can_reveal_draw_pile(self, playable: list[int]) -> bool:
         return self.state.phase is Phase.EARLY_GAME and bool(self.state.draw_pile) and not playable and self._active_source() == "hand"
 
     def _can_pick_up(self, playable: list[int]) -> bool:
-        if not self.state.live_cards:
-            return False
-        if self.state.pending and self.state.pending.kind is PendingKind.FOUR_LOOP:
-            return True
-        return not playable and self.state.phase in {Phase.MIDDLE_GAME, Phase.END_GAME}
+        # Picking up is only for a player who cannot play: in a 4 loop that
+        # means no 4, 5 or 6. In the early game a blocked player may choose
+        # between picking up and revealing the draw-pile top.
+        return bool(self.state.live_cards) and not playable
 
     def _play_card(self, value: int) -> None:
         player = self._current_player()
         source = self._active_source()
+        context = self.state.turn_context
+        if source == "face_up" and context.face_up_slot is None:
+            context.face_up_slot = next(i for i, slot in enumerate(player.face_up_slots) if value in slot)
         self._remove_card_from_source(player, value, source)
-        self.state.live_cards.append(value)
+        self._place_on_live(value)
         self._emit("play", player=self.state.current_player, card=value, source=source)
 
-        context = self.state.turn_context
         if context.open_group_rank is None:
             context.open_group_rank = self.rank(value)
             context.source = source
         context.played_card_ids.append(value)
 
-        if self.rank(value) is Rank.ACE and self._rank_beneath_top() is Rank.SEVEN:
-            if value not in self.state.ace_as_one_card_ids:
-                self.state.ace_as_one_card_ids.append(value)
+        # "Whenever one or more cards are played onto the live cards, the
+        # player who played must draw [back to three]. If a player draws a card
+        # that they just played, they may play that card as well": draw now,
+        # so a drawn card of the group's rank can still join the group.
+        self._draw_to_three_if_early(player)
+
+    def _place_on_live(self, value: int) -> None:
+        """Put a card on the live pile, updating per-card play status."""
+        state = self.state
+        target = self._target_rank_index()
+        previous = state.live_cards[-1] if state.live_cards else None
+        state.live_cards.append(value)
+        # Status from an earlier visit to the live pile no longer applies.
+        if value in state.ace_as_one_card_ids:
+            state.ace_as_one_card_ids.remove(value)
+        if value == state.five_on_zero_card_id:
+            state.five_on_zero_card_id = None
+        if self.rank(value) is Rank.ACE:
+            # "When an ace is played on a 7, that ace becomes a one". Aces
+            # played together with it (same group) are on the 7 as well.
+            on_seven = target == int(Rank.SEVEN)
+            with_one = (
+                previous is not None
+                and previous in state.ace_as_one_card_ids
+                and previous in state.turn_context.played_card_ids
+            )
+            if on_seven or with_one:
+                state.ace_as_one_card_ids.append(value)
 
     def _remove_card_from_source(self, player: Player, value: int, source: str | None) -> None:
         if source == "hand":
@@ -456,11 +496,6 @@ class IBFlipEngine:
                     slot.remove(value)
                     return
         raise IllegalActionError(f"card {value} is not playable from source {source}")
-
-    def _rank_beneath_top(self) -> Rank | None:
-        if len(self.state.live_cards) < 2:
-            return None
-        return self.rank(self.state.live_cards[-2])
 
     def _commit_open_group(self) -> None:
         context = self.state.turn_context
@@ -478,7 +513,7 @@ class IBFlipEngine:
         if self.state.discard_pile:
             index = self.rng.randrange(len(self.state.discard_pile))
             drawn = self.state.discard_pile.pop(index)
-            self.state.live_cards.append(drawn)
+            self._place_on_live(drawn)
             self._emit("nine_draw", player=self.state.current_player, card=drawn)
             self.state.turn_context.played_card_ids.append(drawn)
             self.state.pending = None
@@ -513,7 +548,7 @@ class IBFlipEngine:
             self._clear_turn_context()
             self._flip_live_cards(player_index, flip_rank, play_again=True)
             self._draw_to_three_if_early(self.state.players[player_index])
-            if self.state.phase is not Phase.GAME_OVER:
+            if self.state.phase is not Phase.GAME_OVER and self.state.players[player_index].active:
                 if flip_rank not in {Rank.FOUR, Rank.NINE}:
                     self._finish_or_continue(player_index, player_index)
                 elif not self.state.players[player_index].has_any_cards():
@@ -573,6 +608,11 @@ class IBFlipEngine:
             self.rng.shuffle(new_live)
             self.state.live_cards = new_live
             self.state.discard_pile = old_live
+            # The promoted pile was never "played": no ace in it is a one, and
+            # a 5 on top means playing on zero.
+            self.state.ace_as_one_card_ids = []
+            top = new_live[-1]
+            self.state.five_on_zero_card_id = top if self.rank(top) is Rank.FIVE else None
             self.state.current_player = player_index
             self._resolve_promoted_live_top_after_nine_flip(player_index)
             return
@@ -587,7 +627,10 @@ class IBFlipEngine:
             return
 
         if flip_rank is Rank.EIGHT:
-            self._mark_illegal_loss(player_index)
+            # "If a player flips the 8s they automatically finish in last place."
+            self._finish_player(player_index, FinishStatus.EIGHTS_LOSS)
+            if self.state.phase is not Phase.GAME_OVER:
+                self.state.current_player = self._next_player_index(player_index)
             return
 
         self.state.current_player = player_index if play_again else self._next_player_index(player_index)
@@ -619,7 +662,7 @@ class IBFlipEngine:
             self.state.pending = None
 
     def _draw_to_three_if_early(self, player: Player) -> None:
-        if self.state.phase is Phase.EARLY_GAME:
+        if self.state.phase is Phase.EARLY_GAME and player.active:
             self._draw_to_three(player)
 
     def _draw_to_three(self, player: Player) -> None:
@@ -635,24 +678,56 @@ class IBFlipEngine:
     def _finish_or_continue(self, player_index: int, next_player: int) -> None:
         player = self.state.players[player_index]
         if not player.has_any_cards():
-            if next_player == player_index:
-                self._mark_illegal_loss(player_index)
-                return
-            player.active = False
-            player.finish_status = FinishStatus.LEGAL_WIN
-            self.state.winner = player_index
-            self.state.phase = Phase.GAME_OVER
-            self._emit("win", player=player_index)
+            # "If a player finishes a game in a way that would make it their
+            # own turn, they finish illegally."
+            legal = next_player != player_index
+            self._finish_player(player_index, FinishStatus.LEGAL_WIN if legal else FinishStatus.ILLEGAL_LOSS)
+            if self.state.phase is not Phase.GAME_OVER:
+                self.state.current_player = next_player if legal else self._next_player_index(player_index)
             return
         self.state.current_player = next_player
 
-    def _mark_illegal_loss(self, player_index: int) -> None:
-        player = self.state.players[player_index]
+    def _finish_player(self, player_index: int, status: FinishStatus) -> None:
+        """Take a player out of the game and give them their place.
+
+        Legal finishers take places from the top (1st, 2nd, ...), illegal
+        finishers from the bottom. An 8s flipper "automatically finish[es] in
+        last place": they take the very last place and earlier bottom
+        finishers each move up one. The game is over once at most one player
+        is left; that player gets the remaining place.
+        """
+        state = self.state
+        players = state.players
+        n = len(players)
+        player = players[player_index]
         player.active = False
-        player.finish_status = FinishStatus.ILLEGAL_LOSS
-        self.state.loser = player_index
-        self.state.phase = Phase.GAME_OVER
-        self._emit("lose", player=player_index)
+        player.finish_status = status
+        taken = {p.place for p in players if p.place is not None}
+        free = [k for k in range(1, n + 1) if k not in taken]
+        if status is FinishStatus.LEGAL_WIN:
+            player.place = free[0]
+        elif status is FinishStatus.ILLEGAL_LOSS:
+            player.place = free[-1]
+        else:
+            for other in players:
+                if other.place is not None and other.finish_status in (FinishStatus.ILLEGAL_LOSS, FinishStatus.EIGHTS_LOSS):
+                    other.place -= 1
+            player.place = n
+        self._emit(
+            "win" if status is FinishStatus.LEGAL_WIN else "lose",
+            player=player_index,
+            place=player.place,
+            how=_FINISH_NAMES[status],
+        )
+        remaining = [index for index, p in enumerate(players) if p.place is None]
+        if len(remaining) <= 1:
+            taken = {p.place for p in players if p.place is not None}
+            for index in remaining:
+                players[index].place = next(k for k in range(1, n + 1) if k not in taken)
+            state.phase = Phase.GAME_OVER
+            self._emit("game_over", places=[p.place for p in players])
+        state.winner = next((index for index, p in enumerate(players) if p.place == 1), None)
+        state.loser = next((index for index, p in enumerate(players) if p.place == n), None)
 
     def _pick_up_live_pile(self, player_index: int) -> None:
         self._emit("pickup", player=player_index, cards=list(self.state.live_cards))
@@ -669,14 +744,17 @@ class IBFlipEngine:
         return self._advance_index(start, 1)
 
     def _advance_index(self, start: int, steps: int) -> int:
-        active_indices = [index for index, player in enumerate(self.state.players) if player.active]
-        if not active_indices:
+        """Seat reached after ``steps`` turns from ``start``, skipping players
+        who have left the game (``start`` itself may have just left)."""
+        players = self.state.players
+        if not any(player.active for player in players):
             return start
-        if start not in active_indices:
-            return active_indices[0]
-        position = active_indices.index(start)
-        offset = steps if self.state.direction == 1 else -steps
-        return active_indices[(position + offset) % len(active_indices)]
+        index = start
+        while steps > 0:
+            index = (index + self.state.direction) % len(players)
+            if players[index].active:
+                steps -= 1
+        return index
 
     def _record_lacks(self, player_index: int) -> None:
         state = self.state
@@ -693,10 +771,11 @@ class IBFlipEngine:
         # Revealing is only allowed with nothing playable in hand.
         self._record_lacks(self.state.current_player)
         revealed = self.state.draw_pile.pop(0)
-        playable = can_play_on_index(RANK_INDEX_BY_ID[revealed], self._target_rank_index())
+        # Same legality as a card from hand (incl. "4, 5 or 6" in a 4 loop).
+        playable = self._is_legal_card_play(revealed)
         self._emit("reveal", player=self.state.current_player, card=revealed, ok=playable)
         if playable:
-            self.state.live_cards.append(revealed)
+            self._place_on_live(revealed)
             self.state.turn_context = TurnContext(open_group_rank=self.rank(revealed), played_card_ids=[revealed], source="draw")
             self._resolve_or_defer_for_latest_card(revealed)
         else:
@@ -715,7 +794,7 @@ class IBFlipEngine:
         ok = self._is_legal_card_play(value)
         self._emit("face_down", player=player_index, slot=slot_index, card=value, ok=ok)
         if ok:
-            self.state.live_cards.append(value)
+            self._place_on_live(value)
             self.state.turn_context = TurnContext(open_group_rank=self.rank(value), played_card_ids=[value], source="face_down")
             self._resolve_or_defer_for_latest_card(value)
         else:
@@ -726,9 +805,6 @@ class IBFlipEngine:
 
     def _update_phase(self) -> None:
         if self.state.phase in {Phase.DEALING, Phase.FIXING_HANDS, Phase.GAME_OVER}:
-            return
-        if self.state.winner is not None or self.state.loser is not None:
-            self.state.phase = Phase.GAME_OVER
             return
         if self._active_source() == "face_down":
             self.state.phase = Phase.END_GAME
