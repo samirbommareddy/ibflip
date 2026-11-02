@@ -57,8 +57,8 @@ LEFT_AUTOPILOT_SECONDS = 1.0
 # If the host has been disconnected this long, the next connected human hosts.
 HOST_HANDOFF_SECONDS = 30
 # Bot pacing (seconds). The host can change bot_delay via {"type": "speed"}.
-DEFAULT_BOT_DELAY = 0.9
-BOT_GROUP_FOLLOWUP_FACTOR = 0.55  # same bot adding cards to an open group
+DEFAULT_BOT_DELAY = 1.35
+BOT_GROUP_FOLLOWUP_FACTOR = 0.7  # same bot adding cards to an open group
 FORCED_MOVE_FACTOR = 0.8  # the random 9-draw
 
 # Per-connection outbound queue.
