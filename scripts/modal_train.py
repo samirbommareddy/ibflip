@@ -20,9 +20,17 @@ import modal
 ROOT = Path(__file__).resolve().parents[1]
 CPU = int(os.environ.get("IBFLIP_MODAL_CPU", "64"))
 
+
+def source_revision() -> str:
+    try:
+        return subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return os.environ.get('IBFLIP_SOURCE_REVISION', 'unknown')
+
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install("numpy", "torch", extra_index_url="https://download.pytorch.org/whl/cpu")
+    .env({"IBFLIP_SOURCE_REVISION": source_revision()})
     .add_local_dir(ROOT / "src", "/app/src")
     .add_local_dir(ROOT / "scripts", "/app/scripts")
     .add_local_file(ROOT / "docs/rules-audit.md", "/app/docs/rules-audit.md")
@@ -32,7 +40,7 @@ volume = modal.Volume.from_name("ibflip-runs", create_if_missing=True)
 app = modal.App("ibflip-selfplay", image=image)
 
 
-@app.function(cpu=CPU, memory=32768, timeout=24 * 3600, volumes={"/runs": volume})
+@app.function(cpu=(CPU, CPU), memory=(32768, 32768), max_containers=1, retries=0, timeout=24 * 3600, volumes={"/runs": volume})
 def train(hours: float, name: str, extra: str = "") -> str:
     if not math.isfinite(hours) or not 0 < hours <= 8:
         raise ValueError("training duration must be finite and at most eight hours")

@@ -51,8 +51,8 @@ Each run writes `manifest.json`; `.npz` actors and `.pt` checkpoints embed the
 same manifest. It records source revision/dirty status, hashes of Python source,
 the PDF and audit rulings, schemas, scoring contract, configuration, random seed,
 package versions and initialization-file hashes. It never captures `.env` or
-environment credentials. In a container without Git, source hashes still identify
-the uploaded code; revision may be `unknown`.
+environment credentials. The Modal image embeds the launching Git revision; source hashes also identify
+the uploaded code when the container has no Git checkout.
 
 Resume requires matching source digest and schemas. For changed code or old
 checkpoints, use `--init-actor` and a new run directory instead. Output with an
@@ -96,11 +96,11 @@ at 2–5 players, checkpoint writes and resume.
 
 ## Cloud status
 
-No cloud compute has been launched. The read-only `modal billing summary --json`
+At preparation time, no cloud compute had been launched. The read-only `modal billing summary --json`
 returned zero metered/billed usage for this month. `modal billing rates --json`
 also succeeded. These APIs do **not** establish the unused free-credit allowance;
-the MSI dashboard redirects to login. Remaining free credit must be confirmed
-before launch, as required by `AGENTS.md`. A generic monthly plan allowance is
+the MSI dashboard redirects to login. The owner subsequently confirmed $30 in available free credit on 7 November
+2026, satisfying the pre-launch check required by `AGENTS.md`. A generic monthly plan allowance is
 not evidence of this account's available balance.
 
 Read-only billing reports are stored under Git-ignored `runs/preflight/`.
@@ -121,5 +121,21 @@ completed training, checkpoint/export and comparisons at 2–5 players, with no
 cutoffs in those small comparisons. This is pipeline validation, not strength
 evidence. A separate local run resumed successfully at its next iteration.
 Read-only identity checks confirm both workspace and login account are
-`samir-bommareddy`. The owner expects a $30 allowance; available balance has not
-yet been independently confirmed.
+`samir-bommareddy`. The owner confirmed $30 in remaining free credit before authorizing the
+bounded pilot. A fresh read-only check showed no usage or other running apps.
+
+
+## Authorized cloud pilot
+
+The initial pilot is limited to two hours, 64 CPU cores and 32 GiB memory, with
+hard CPU/memory limits and one training container. Live rates at launch were
+$0.04730 per CPU-hour and $0.00800 per GiB-hour, estimating $6.5664 for the
+two-hour training allocation. Startup/image-build/storage overhead is additional;
+most of the confirmed $30 is reserved rather than allocated to this first run.
+No paid plan or automatic recharge was enabled.
+
+Use the shipped old actor to initialize shared layers and as a frozen baseline.
+Use 60 single-BLAS-thread rollout workers, 8 learner threads, 65,536 decisions per
+iteration, the shared 3,000-decision cutoff, evaluation every 20 iterations (400
+games per table size per direction), and snapshots every 5 iterations. Keep the
+original model in place until larger fresh-seed evaluations validate a candidate.
