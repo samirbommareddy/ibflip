@@ -3,6 +3,10 @@
 ## Local environment and hosting policy
 
 - See `docs/local-development.md` before running local or cloud commands.
+- See `docs/frontend.md` for client/review module ownership.
+- Blue is the active visual direction. Read `.local/design-review.json`, if
+  present, for the owner's motion decisions and notes. Previewing an option
+  is not approval; only explicit review decisions are authoritative.
 - Keep all local credentials in the Git-ignored root `.env`. Use
   `./scripts/with-env <command> [arguments...]` to load it for project commands.
   Never print credential values, commit `.env`, or copy it under `static/`.

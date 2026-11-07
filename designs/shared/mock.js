@@ -1,6 +1,4 @@
-// Shared mock state + semantic markup for the IB-Flip design studies.
-// Every design renders the same moment of the same game; only its CSS (and a few
-// options in window.DESIGN) differ, so the comparison is about look, not content.
+// Blue layout reference: a fixed sample game, separate from the playable client.
 (() => {
   const D = Object.assign({ suits: { s: "♠", h: "♥", d: "♦", c: "♣" }, tags: true, backLabel: "IB" }, window.DESIGN || {});
   const TAG = { 2: "again", 3: "reverse", 4: "4-loop", 5: "under", 7: "≤ 7", 8: "skip", 9: "draw", 10: "flip" };
@@ -231,7 +229,7 @@
     const sw = document.createElement("nav");
     sw.className = "mock-switch";
     sw.setAttribute("aria-label", "Mockup screens");
-    sw.innerHTML = `<a href="../">All designs</a>` + ["home", "table", "results"].map((s) => `<button data-s="${s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join("") + `<button data-s="reset" title="Put the cards back">Replay</button>`;
+    sw.innerHTML = `<a href="../lab/">Motion review</a>` + ["home", "table", "results"].map((s) => `<button data-s="${s}">${s[0].toUpperCase() + s.slice(1)}</button>`).join("") + `<button data-s="reset" title="Put the cards back">Replay</button>`;
     if (!Q.get("embed")) document.body.append(sw);
     const start = (location.hash || "#table").slice(1);
     show(screens[start] ? start : "table");

@@ -3,10 +3,10 @@
 A web card game for friends and bots, an exact rules engine, and a self-play
 trained AI opponent ("Shark").
 
-- **Play with friends**: create a room, share the 4-letter code or invite link,
+- **Play with friends**: create a room, share the 6-letter code or invite link,
   fill empty seats with bots, play in real time over WebSockets.
 - **Play vs bots**: Rookie (sloppy heuristic), Regular (solid heuristic),
-  Shark (neural policy trained by self-play, plus search).
+  Shark (neural policy trained by self-play).
 - Full rules in `IB-Flip__The_Complete_Rules.pdf`; an in-game "How to play"
   sheet includes a what-can-go-on-what matrix.
 
@@ -24,6 +24,8 @@ trained AI opponent ("Shark").
 | `scripts/modal_train.py` | Runs the trainer on a 64-core Modal container |
 | `src/ibflip_web/` | FastAPI app: rooms, seats, bots, per-player (hidden-info safe) views, WebSockets |
 | `static/` | Front-end (vanilla JS/CSS, no build step) |
+| `designs/lab/` | Focused motion review with explicit decisions and notes |
+| `scripts/design_review.py` | Local review server; saves feedback to ignored `.local/design-review.json` |
 
 ## Run locally
 
@@ -37,6 +39,10 @@ uv sync --locked --group dev
 
 Open http://127.0.0.1:8000 — the backend also serves the front-end. (If you
 serve `static/` from another local port, the client talks to `:8000`.)
+
+For design decisions, run `.venv/bin/python scripts/design_review.py` and open
+`http://127.0.0.1:8080/`. See [remote access and feedback storage](docs/local-development.md)
+for SSH forwarding from your own computer.
 
 ## Tests
 

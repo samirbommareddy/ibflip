@@ -221,11 +221,6 @@ function initHome() {
     const v = store.get(`ibflip:${id}`);
     if (v) $$(`#${id} button`).forEach((x) => x.classList.toggle("on", x.dataset.v === v));
   }
-  // hero cards
-  [47, 30, 51, 12, 41].forEach((id, i) => {
-    const el = $(`.hero-card[data-hero="${i}"]`);
-    el.outerHTML = cardHTML(id, { cls: "hero-card", extra: `data-hero="${i}"` });
-  });
   $("#quickPlay").addEventListener("click", quickPlay);
   $("#createRoom").addEventListener("click", createRoom);
   $("#joinRoom").addEventListener("click", () => joinRoom($("#codeInput").value));
@@ -511,8 +506,7 @@ async function copyInvite() {
 }
 
 // ================================================================= TABLE
-// Seat centres as % of the table box. The table keeps a fixed stadium
-// aspect ratio (see .table in styles.css), so these stay on the felt.
+// Seat centres as % of the Blue table's available play area.
 const SEAT_POS = {
   1: [[50, 17]],
   2: [[28, 19], [72, 19]],
@@ -1246,7 +1240,7 @@ function confetti() {
   if (REDUCED()) return;
   const canvas = $("#confetti"), ctx = canvas.getContext("2d");
   canvas.width = innerWidth; canvas.height = innerHeight;
-  const colors = ["#f2c14e", "#e9a93a", "#c0392b", "#fffdf6", "#57d68d", "#7dd3fc"];
+  const colors = ["#2d4bdf", "#89a0ff", "#dbe2ff", "#ffffff"];
   const parts = Array.from({ length: 160 }, () => ({
     x: innerWidth / 2 + (Math.random() - 0.5) * 200, y: innerHeight / 3,
     vx: (Math.random() - 0.5) * 14, vy: -Math.random() * 14 - 4, s: 4 + Math.random() * 6,
@@ -1297,6 +1291,30 @@ function buildRules() {
 
 // ================================================================== wiring
 function wire() {
+  const themeMedia = matchMedia("(prefers-color-scheme: dark)");
+  const applyTheme = () => {
+    const theme = store.get("ibflip:theme") || (themeMedia.matches ? "dark" : "light");
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#111422" : "#f7f8fc";
+    $$("[data-theme-toggle]").forEach((button) => {
+      button.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+      button.setAttribute("aria-label", `Switch to ${theme === "dark" ? "light" : "dark"} mode`);
+    });
+  };
+  applyTheme();
+  themeMedia.addEventListener("change", applyTheme);
+  $$("[data-theme-toggle]").forEach((button) => button.addEventListener("click", () => {
+    store.set("ibflip:theme", document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+    applyTheme();
+  }));
+  if (["localhost", "127.0.0.1"].includes(location.hostname)) {
+    $$("[data-design-review]").forEach((link) => {
+      link.href = `http://${location.hostname}:8080/lab/`;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.classList.remove("hidden");
+    });
+  }
   $$("[data-open]").forEach((b) => b.addEventListener("click", () => $(`#${b.dataset.open}`).classList.remove("hidden")));
   $$(".overlay").forEach((o) => o.addEventListener("click", (e) => {
     if (e.target === o && o.id !== "resultOverlay") o.classList.add("hidden");

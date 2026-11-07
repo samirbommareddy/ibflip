@@ -37,18 +37,32 @@ Keep that terminal open and visit `http://127.0.0.1:8000` on your computer.
 If local port 8000 is occupied, use `-L 8080:127.0.0.1:8000` and visit port
 8080 instead. The development server stays bound to MSI's loopback interface.
 
-### Review Claude's design studies
+### Review the Blue design and motion
 
-The playable game uses `static/`. The Blue direction and motion lab are separate
-mockups under `designs/`; they are not integrated into the playable UI yet.
-Serve that directory alone in another MSI terminal:
+Blue is the playable game's design in `static/`. Its layout reference lives
+under `designs/blue/`. The motion studio under `designs/lab/` shows one scenario
+at a time, with independent preview, explicit decisions, and feedback fields.
+Run the local review server in another MSI terminal:
 
 ```bash
-.venv/bin/python -m http.server 8080 --bind 127.0.0.1 --directory designs
+.venv/bin/python scripts/design_review.py
 ```
 
-Forward port 8080 as well (`-L 8080:127.0.0.1:8080`) to review `/blue/` and
-`/lab/`. Never serve the repository root: it contains the private `.env`.
+Forward port 8080 as well (`-L 8080:127.0.0.1:8080`) and open
+`http://127.0.0.1:8080/` to start reviewing. The old `/lab/` link still works.
+Never serve the repository root: it contains the private `.env`.
+
+Decisions and notes autosave to the browser and to `.local/design-review.json`
+on MSI. That file is ignored by Git; agents can read it before implementing
+feedback. The studio states whether the MSI save succeeded. If the review
+server is unavailable, browser storage and JSON export remain available.
+Previewing an animation does not approve it. No scenarios start approved.
+
+The previous design directions and thumbnails were archived under
+`/home/samir/history/ibflip-retired-designs-20261107-122318/` and removed from
+the active checkout. Shared card/table primitives live under `designs/shared/`;
+the motion catalog, preview execution, review storage, and review interface
+have separate owning files under `designs/lab/`.
 
 The launcher loads `.env` for its command and children only. It does not change
 your parent shell or automatically expose the credentials in other projects.
@@ -90,6 +104,7 @@ Never put deployment/admin keys into frontend JavaScript or public assets.
 
 ```bash
 uv run --locked pytest -q
+node --test tests/test_review_store.mjs
 ```
 
 Develop and test locally. Keep hosting free: no paid plans, paid add-ons,

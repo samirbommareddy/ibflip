@@ -3,28 +3,25 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0d3b2a" />
+    <meta name="theme-color" content="#f7f8fc" />
     <meta name="ibflip-api" content="https://api.ibflip.com" />
     <script>
       if (location.hostname === "www.ibflip.com") location.replace("https://ibflip.com" + location.pathname + location.search + location.hash);
     </script>
     <title>IB-Flip</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='18' y='8' width='64' height='84' rx='10' fill='%23fffdf6' stroke='%23c9a24b' stroke-width='5'/><text x='50' y='66' font-size='46' text-anchor='middle' fill='%23c0392b'>♥</text></svg>" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path fill='%232d4bdf' d='M10 10h80v80H10z'/><path fill='none' stroke='white' stroke-width='5' d='M24 24h52v52H24zM38 38h24v24H38z'/></svg>" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <!-- ============================== HOME ============================== -->
     <section id="home" class="screen active" aria-label="Home">
       <div class="home-inner">
-        <div class="hero-cards" aria-hidden="true">
-          <div class="card hero-card" data-hero="0"></div>
-          <div class="card hero-card" data-hero="1"></div>
-          <div class="card hero-card" data-hero="2"></div>
-          <div class="card hero-card" data-hero="3"></div>
-          <div class="card hero-card" data-hero="4"></div>
+        <div class="home-heading">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <button class="theme-toggle" data-theme-toggle type="button" aria-label="Switch to dark mode">Dark mode</button>
         </div>
         <h1 class="logo">IB<span>·</span>Flip</h1>
-        <p class="tagline">The card game of flips, skips and sudden reversals.</p>
+        <p class="tagline">A good hand can turn in a moment.</p>
 
         <div class="lost-notice hidden" id="lostNotice" role="status">
           <p class="lost-title">That table has closed</p>
@@ -59,7 +56,7 @@
                 <button data-v="easy">Rookie</button><button data-v="medium">Regular</button><button data-v="hard" class="on">Shark <small>AI</small></button>
               </div>
             </div>
-            <button id="quickPlay" class="btn primary big">Deal me in</button>
+            <button id="quickPlay" class="btn primary big">Start a game <span aria-hidden="true">↗</span></button>
           </div>
 
           <div class="tab-body hidden" data-body="friends">
@@ -73,6 +70,7 @@
           <p id="homeError" class="error" role="alert"></p>
         </div>
         <button class="link-btn" data-open="rules">How to play</button>
+        <a class="review-link hidden" data-design-review>Design review ↗</a>
         <p id="serverNote" class="server-note"></p>
       </div>
     </section>
@@ -115,7 +113,7 @@
 
       <div class="table-wrap">
         <div class="table" id="table">
-          <div class="felt-ring" id="dirRing" aria-hidden="true"><span>➜</span><span>➜</span><span>➜</span><span>➜</span></div>
+          <div class="direction-ring" id="dirRing" aria-hidden="true"><span>➜</span><span>➜</span><span>➜</span><span>➜</span></div>
           <div class="seats" id="seats"></div>
 
           <div class="center" id="center">
@@ -174,6 +172,8 @@
     <div class="overlay hidden" id="menuOverlay">
       <div class="panel menu-panel">
         <h3>Menu</h3>
+        <button class="btn" data-theme-toggle type="button">Dark mode</button>
+        <a class="review-link hidden" data-design-review>Design review ↗</a>
         <label class="row pace-row"><span>Bot pace</span>
           <span class="pace"><small>Slower</small><input type="range" id="speedRange" min="0.2" max="2" step="0.05" value="0.85" /><small>Faster</small></span>
         </label>

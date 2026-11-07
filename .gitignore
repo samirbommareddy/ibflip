@@ -19,3 +19,6 @@ runs/
 .wrangler/
 .claude/worktrees/
 screenshots/
+
+# Local design decisions and notes, readable by agents but never published
+.local/

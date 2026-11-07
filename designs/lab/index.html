@@ -1,43 +1,195 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IB-Flip motion lab</title>
-<meta name="description" content="Every animation in IB-Flip with alternatives to compare, plus spacing and card-size options.">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;600;800&display=swap">
-<link rel="stylesheet" href="../shared/base.css">
-<link rel="stylesheet" href="../swiss/swiss.css">
-<link rel="stylesheet" href="../blue/style.css">
-<link rel="stylesheet" href="lab.css">
-<script src="lab.js"></script>
-</head>
-<body>
-<main class="lab">
-  <header class="intro">
-    <a class="back-link" href="../">All designs</a>
-    <h1>Motion lab</h1>
-    <p>Press Play to try an option. The last one you played is your pick. Copy your picks at the bottom.</p>
-    <button class="btn theme-btn" onclick="(()=>{const r=document.documentElement;const d=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;r.dataset.theme=d?'light':'dark';const f=document.getElementById('preview');f.src=f.src.replace(/([?&])theme=[a-z]+/,'$1').replace('#table','')+(f.src.includes('?')?'&':'?')+'theme='+r.dataset.theme+'#table';})()">Switch light or dark</button>
-  </header>
-
-  <section class="demo spacing">
-    <header><h2>Spacing and card size</h2></header>
-    <div class="space-controls">
-      <div class="seg" role="group" aria-label="Spacing"><span>Spacing</span><button class="btn" data-space="density:compact">Compact</button><button class="btn" data-space="density:regular">Regular</button><button class="btn" data-space="density:airy">Airy</button></div>
-      <div class="seg" role="group" aria-label="Card size"><span>Card size</span><button class="btn" data-space="cards:small">Small</button><button class="btn" data-space="cards:medium">Medium</button><button class="btn" data-space="cards:large">Large</button></div>
-    </div>
-    <div class="previews"><div class="frame"><iframe id="preview" title="Table preview" width="1440" height="900"></iframe></div></div>
-  </section>
-
-  <div id="demos"></div>
-
-  <section class="picks">
-    <h2>Your picks</h2>
-    <textarea id="summary" rows="16" readonly></textarea>
-    <button class="btn primary" data-copy>Copy my picks</button>
-  </section>
-</main>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Shape the feel of IB-Flip, one moment at a time. Preview, choose, and leave feedback."
+    />
+    <title>IB-Flip · Motion studio</title>
+    <link rel="stylesheet" href="lab.css" />
+    <script type="module" src="lab.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a
+        class="brand"
+        href="http://127.0.0.1:8000/"
+        data-play-game
+        aria-label="Play IB-Flip"
+        ><span class="brand-mark" aria-hidden="true"></span>IB<span
+          class="brand-dot"
+          >·</span
+        >Flip</a
+      >
+      <span class="header-label">Motion studio</span>
+      <div class="header-actions">
+        <a
+          class="text-link"
+          href="http://127.0.0.1:8000/"
+          data-play-game
+          target="_blank"
+          rel="noopener"
+          >Play Blue <span aria-hidden="true">↗</span></a
+        ><button
+          class="icon-button"
+          id="theme-toggle"
+          aria-label="Switch to dark mode"
+          title="Switch theme"
+        >
+          ◐
+        </button>
+      </div>
+    </header>
+    <main class="studio">
+      <section class="welcome" aria-labelledby="studio-title">
+        <div>
+          <p class="eyebrow">MAKE IT FEEL RIGHT</p>
+          <h1 id="studio-title">One moment. The right feel.</h1>
+          <p class="intro-copy">
+            Watch a moment. Try another feel. Keep what you like.
+          </p>
+        </div>
+        <button class="outline-button overview-button" id="open-overview">
+          All moments <span id="progress-count">0 / 20</span>
+        </button>
+      </section>
+      <section class="review" aria-labelledby="moment-title">
+        <div class="review-heading">
+          <div>
+            <p class="eyebrow" id="moment-category">THE EVERYDAY</p>
+            <h2 id="moment-title">Selecting a card</h2>
+            <p id="moment-description" class="description"></p>
+          </div>
+          <div class="step-counter" id="step-counter">01 <span>/ 20</span></div>
+        </div>
+        <div class="review-layout">
+          <div class="preview-panel">
+            <div class="preview-bar">
+              <span class="preview-label"
+                ><span class="live-dot" aria-hidden="true"></span
+                ><span id="preview-label">Ready to preview</span></span
+              ><button class="replay-button" id="replay">
+                <span aria-hidden="true">↻</span> Replay
+              </button>
+            </div>
+            <div id="preview-host" class="preview-host"></div>
+            <div class="preview-caption">
+              <span id="playback-status" role="status"
+                >Choose an option, then press Replay.</span
+              ><span id="reduced-motion"></span>
+            </div>
+          </div>
+          <div class="choices-panel">
+            <div class="choice-heading">
+              <h3>Find the right feel</h3>
+              <span>Previewing doesn’t choose it.</span>
+            </div>
+            <div
+              id="options"
+              class="options"
+              role="group"
+              aria-label="Animation options"
+            ></div>
+            <div class="choice-summary" id="choice-summary" aria-live="polite">
+              No decision yet.
+            </div>
+            <div class="decision-actions">
+              <button class="primary-button" id="approve">
+                Use this option <span aria-hidden="true">✓</span>
+              </button>
+              <div class="secondary-decisions">
+                <button class="quiet-button" id="needs-work">Needs work</button
+                ><button class="quiet-button" id="reject">No animation</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="feedback-row">
+          <label for="moment-note"
+            ><span class="field-title">What would make this better?</span
+            ><span class="field-hint"
+              >Too fast? Too much? Describe the feeling you want.</span
+            ></label
+          ><textarea
+            id="moment-note"
+            rows="2"
+            maxlength="5000"
+            placeholder="A note for this moment…"
+          ></textarea>
+        </div>
+        <div class="review-footer">
+          <button class="nav-button" id="previous">
+            <span aria-hidden="true">←</span> Previous
+          </button>
+          <div class="save-area">
+            <span class="save-status" id="save-status" role="status"
+              >Opening your review…</span
+            ><button class="text-button" id="load-latest" hidden>
+              Load latest MSI copy
+            </button>
+          </div>
+          <button class="nav-button next" id="next">
+            Next moment <span aria-hidden="true">→</span>
+          </button>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <span id="progress-fill"></span>
+        </div>
+      </section>
+      <section class="overall-feedback">
+        <div>
+          <p class="eyebrow">THE BIG PICTURE</p>
+          <h2>Anything else on your mind?</h2>
+          <p>
+            One place for thoughts about the overall pace, style, or experience.
+          </p>
+        </div>
+        <label class="sr-only" for="general-note">Overall feedback</label
+        ><textarea
+          id="general-note"
+          rows="3"
+          maxlength="10000"
+          placeholder="I’d like the whole game to feel…"
+        ></textarea>
+      </section>
+      <footer class="studio-footer">
+        <span
+          >Your choices stay with this review. Come back whenever you
+          like.</span
+        >
+        <div>
+          <button class="text-button" id="export-review">Download review</button
+          ><button class="text-button" id="copy-review">Copy summary</button>
+        </div>
+      </footer>
+    </main>
+    <dialog id="overview-dialog" aria-labelledby="overview-title">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">YOUR REVIEW</p>
+          <h2 id="overview-title">Every moment, at a glance.</h2>
+        </div>
+        <button
+          class="icon-button"
+          id="close-overview"
+          aria-label="Close overview"
+        >
+          ×
+        </button>
+      </div>
+      <p class="overview-description">
+        Jump anywhere. Nothing is approved until you choose it.
+      </p>
+      <div id="overview-list"></div>
+      <div class="dialog-footer">
+        <span id="overview-progress"></span
+        ><button class="primary-button" id="continue-review">
+          Continue review →
+        </button>
+      </div>
+    </dialog>
+    <div class="toast" id="toast" role="status" hidden></div>
+  </body>
 </html>
