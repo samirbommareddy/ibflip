@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Load this checkout's private environment for a command and its children only.
+set -euo pipefail
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: $0 <command> [arguments...]" >&2
+    exit 2
+fi
+
+project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ ! -f "$project_root/.env" ]]; then
+    echo "Missing $project_root/.env; copy .env.example to .env and fill it in locally." >&2
+    exit 1
+fi
+
+# Each invocation starts with fresh project authentication. Do not inherit a
+# previous account from the calling shell or fall back to user-wide credentials.
+unset MODAL_TOKEN_ID MODAL_TOKEN_SECRET MODAL_PROFILE MODAL_CONFIG_PATH
+unset MODAL_OAUTH_REFRESH_TOKEN MODAL_OAUTH_CLIENT_ID MODAL_OAUTH_CLIENT_SECRET MODAL_OAUTH_JWT_KEY
+export MODAL_CONFIG_PATH=/dev/null
+
+set -a
+source "$project_root/.env"
+set +a
+exec "$@"

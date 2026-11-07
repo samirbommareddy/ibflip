@@ -1,5 +1,11 @@
 # Handoff: next phase (deployment + Shark in the browser + design iteration)
 
+Local setup update (November 7, 2026): all MSI credentials now live in the
+Git-ignored root `.env`. Run project commands through `./scripts/with-env`;
+see `docs/local-development.md`. The user-wide Modal config has been removed.
+This older handoff does not authorize a merge, deployment, or cloud training;
+follow the current user instructions and `AGENTS.md`.
+
 Written at the end of a session so a fresh session (with new env vars) can
 continue. Delete this file when the phase is done.
 

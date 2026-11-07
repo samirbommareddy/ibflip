@@ -27,8 +27,12 @@ trained AI opponent ("Shark").
 
 ## Run locally
 
+Local credentials belong in the Git-ignored `.env`; see
+[local development](docs/local-development.md) for setup and credential details.
+
 ```bash
-uv run uvicorn ibflip_web.main:app --reload
+uv sync --locked --group dev
+./scripts/with-env uv run --locked uvicorn ibflip_web.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Open http://127.0.0.1:8000 — the backend also serves the front-end. (If you
@@ -90,7 +94,7 @@ Train (needs torch; not a runtime dependency):
 ```bash
 python scripts/train_ppo.py --hours 2 --out runs/local
 # or on Modal (64 cores):
-modal run --detach scripts/modal_train.py::main --hours 4 --name main
+./scripts/with-env uv run --locked --with modal modal run --detach scripts/modal_train.py::main --hours 4 --name main
 ```
 
 Then copy `runs/<name>/actor_latest.npz` to `src/ibflip/ai/model.npz`.
@@ -104,6 +108,6 @@ Then copy `runs/<name>/actor_latest.npz` to `src/ibflip/ai/model.npz`.
   `.github/workflows/pages.yml` deploys `main` to production and other
   branches to `<branch>.ibflip.pages.dev` (needs repo secrets
   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`). Manual deploy:
-  `npx wrangler pages deploy static --project-name ibflip --branch main`.
+  `./scripts/with-env npx wrangler pages deploy static --project-name ibflip --branch main`.
   The client talks to the API URL in the `ibflip-api` meta tag of
   `static/index.html`.
