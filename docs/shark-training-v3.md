@@ -139,3 +139,25 @@ Use 60 single-BLAS-thread rollout workers, 8 learner threads, 65,536 decisions p
 iteration, the shared 3,000-decision cutoff, evaluation every 20 iterations (400
 games per table size per direction), and snapshots every 5 iterations. Keep the
 original model in place until larger fresh-seed evaluations validate a candidate.
+
+
+### Pilot launch result
+
+The 64-CPU request remained queued without starting a container and was stopped.
+The replacement started on **16 CPUs with a hard 16-CPU limit**, 32 GiB memory,
+14 rollout workers, 2 learner threads and 32,768 decisions per iteration. Its
+training allocation estimate is **$2.0256 for two hours**, plus startup/storage
+overhead. It was launched from clean local `main`, source revision
+`7c67960df4cfc3928cb3703563e35ff9cd3ec7fd`, and the first PPO update completed
+successfully after 402 self-play games. This establishes that the pipeline is
+running; it is not evidence that the model is stronger yet.
+
+- Started 7 November 2026 around 14:09 Europe/Stockholm; expected trainer cutoff
+  around 16:09, with a short shutdown allowance.
+- Run name: `shark-v3-20261107-main-7c67960`.
+- Dashboard: https://modal.com/apps/samir-bommareddy/main/ap-5KwrtufBE2z4bn3bXC8sHu
+- Artifacts: `ibflip-runs` volume, under the run-name directory.
+- Local receipt: `runs/shark-v3-20261107-main-7c67960/launch.json` (Git-ignored).
+- Periodic volume commits run every five minutes. Snapshots are retained every
+  five iterations; full checkpoints/latest actor are saved at evaluation and exit.
+- No model promotion, Git push, website deployment or paid-plan change occurred.

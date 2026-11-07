@@ -2,8 +2,8 @@
 
 **Preparation update:** [Shark v3 training](shark-training-v3.md) implements
 slot-aware observations/actions, unified cutoff scoring and checkpoint
-provenance. The shipped weights are still the old baseline. Cloud training
-awaits confirmation of available free credit. The research ideas below remain
+provenance. The shipped weights are still the old baseline. The owner confirmed $30 in free credit, and a bounded two-hour pilot has
+started; see the linked training document for its run and budget details. The research ideas below remain
 future work; learned fixing and search are not part of the prepared PPO pilot.
 
 A plan for the next time Modal credit is available. It uses what we learned from
