@@ -9,6 +9,7 @@ hand-fixing phase.
 from __future__ import annotations
 
 import random
+import json
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +20,15 @@ from ibflip.state import FinishStatus
 from ibflip.ai.observation import (
     A_END_GROUP,
     A_FACE_DOWN,
+    A_FACE_UP_SLOT_0,
+    LEGACY_ACTIONS,
+    OBS_SIZE,
+    OBSERVATION_VERSION,
+    ACTION_VERSION,
+    OBS_SIZE_V1,
+    OBS_SIZE_V2,
+    SELF_SLOTS_OFFSET,
+    SLOT_FEATURES,
     A_PICK_UP,
     A_REVEAL,
     NUM_COMPACT_ACTIONS,
@@ -98,7 +108,7 @@ def _pick_card(engine: IBFlipEngine, mapping: dict[int, list[int]], compact: int
 
 
 def heuristic_fix(engine: IBFlipEngine, player_index: int) -> None:
-    """Put the strongest three cards face up, keep the weakest in hand."""
+    """Put strong cards face up, then consolidate matching visible/hand cards."""
     player = engine.state.players[player_index]
     for _ in range(6):
         if not player.hand:
@@ -114,6 +124,24 @@ def heuristic_fix(engine: IBFlipEngine, player_index: int) -> None:
         if KEEP_BY_INDEX[RANK_INDEX_BY_ID[best_hand]] <= KEEP_BY_INDEX[RANK_INDEX_BY_ID[player.face_up_slots[worst_slot][0]]]:
             break
         engine.fix_swap_card(player_index, best_hand, worst_slot)
+
+    # Produce real stack positions during both self-play and deployed fixing;
+    # otherwise a slot-aware learner would only ever see singleton slots.
+    for source in range(len(player.face_up_slots)):
+        while player.face_up_slots[source]:
+            card = player.face_up_slots[source][-1]
+            target = next((i for i, slot in enumerate(player.face_up_slots[:source])
+                           if slot and engine.rank(slot[-1]) is engine.rank(card)), None)
+            if target is None:
+                break
+            engine.fix_stack_card(player_index, card, target)
+    for _ in range(52):  # each move exposes a new card or exhausts the hand
+        matching = next(((card, i) for card in player.hand
+                         for i, slot in enumerate(player.face_up_slots)
+                         if slot and engine.rank(slot[-1]) is engine.rank(card)), None)
+        if matching is None:
+            break
+        engine.fix_stack_card(player_index, *matching)
 
 
 class RandomAgent:
@@ -154,7 +182,9 @@ class HeuristicAgent:
         state = engine.state
         live = state.live_cards
         player = state.players[state.current_player]
-        rank_moves = [a for a in legal if a < 13]
+        _, action_map = compact_legal(engine)
+        rank_moves = [a for a in legal if a < 13 or a >= A_FACE_UP_SLOT_0]
+        rank_for = lambda a: RANK_INDEX_BY_ID[action_map[a][0]]
 
         def would_flip_eights(rank: int) -> bool:
             if rank != int(Rank.EIGHT):
@@ -188,19 +218,20 @@ class HeuristicAgent:
 
         if state.turn_context.open_group_rank is not None:
             group = int(state.turn_context.open_group_rank)
-            if group in rank_moves and not would_flip_eights(group) and group not in (int(Rank.TWO), int(Rank.TEN)):
-                if not finishes_illegally(group) and not loses_now(group):
-                    return group
+            continuations = [a for a in rank_moves if rank_for(a) == group]
+            if continuations and not would_flip_eights(group) and group not in (int(Rank.TWO), int(Rank.TEN)):
+                if not finishes_illegally(group) and not loses_now(continuations[0]):
+                    return continuations[0]
             if A_END_GROUP in legal and not loses_now(A_END_GROUP):
                 return A_END_GROUP
             others = [a for a in legal if a != A_END_GROUP and not loses_now(a)]
             return others[0] if others else legal[0]
 
-        safe = [a for a in rank_moves if not would_flip_eights(a) and not finishes_illegally(a)]
+        safe = [a for a in rank_moves if not would_flip_eights(rank_for(a)) and not finishes_illegally(rank_for(a))]
         safe = [a for a in safe if not loses_now(a)]
         if safe:
             # Attack with a 4 when the next player looks weak on 4/5/6.
-            return min(safe, key=lambda a: (KEEP_BY_INDEX[a], self.rng.random()))
+            return min(safe, key=lambda a: (KEEP_BY_INDEX[rank_for(a)], self.rng.random()))
         if A_REVEAL in legal:
             return A_REVEAL
         if A_FACE_DOWN in legal:
@@ -222,8 +253,21 @@ class MLPPolicy:
             i += 1
         self.policy_w = data["pw"].astype(np.float32)
         self.policy_b = data["pb"].astype(np.float32)
+        self.metadata = json.loads(str(data["metadata"])) if "metadata" in data else None
         self.value_w = data["vw"].astype(np.float32) if "vw" in data else None
         self.value_b = data["vb"].astype(np.float32) if "vb" in data else None
+        if not self.layers or self.layers[0][0].shape[0] not in (OBS_SIZE_V1, OBS_SIZE_V2, OBS_SIZE):
+            raise ValueError("unsupported policy observation schema")
+        if self.policy_b.shape not in ((LEGACY_ACTIONS,), (NUM_COMPACT_ACTIONS,)):
+            raise ValueError("unsupported policy action schema")
+        if self.policy_b.shape == (NUM_COMPACT_ACTIONS,) and self.layers[0][0].shape[0] != OBS_SIZE:
+            raise ValueError("v3 action policy requires v3 observations")
+        if self.metadata is not None:
+            declared = self.metadata.get("schema", {})
+            if declared.get("observation_version") != OBSERVATION_VERSION or declared.get("action_version") != ACTION_VERSION:
+                raise ValueError("unsupported policy metadata schema version")
+            if declared.get("observation_size") != self.layers[0][0].shape[0] or declared.get("action_count") != len(self.policy_b):
+                raise ValueError("policy metadata does not match weight shapes")
 
     def trunk(self, obs: np.ndarray) -> np.ndarray:
         n_in = self.layers[0][0].shape[0]
@@ -235,6 +279,19 @@ class MLPPolicy:
 
     def logits(self, obs: np.ndarray, mask: np.ndarray) -> np.ndarray:
         logits = self.trunk(obs) @ self.policy_w + self.policy_b
+        if logits.shape[-1] == LEGACY_ACTIONS and mask.shape[-1] == NUM_COMPACT_ACTIONS:
+            # An old rank policy is a baseline, not a v3-trained model. Give
+            # each slot its rank's old logit; never alias one slot's cards to
+            # another slot. Prefix observations keep old weights usable.
+            extended = np.full((*logits.shape[:-1], NUM_COMPACT_ACTIONS), -1e9, dtype=logits.dtype)
+            extended[..., :LEGACY_ACTIONS] = logits
+            for slot in range(3):
+                base = SELF_SLOTS_OFFSET + slot * SLOT_FEATURES
+                ranks = np.argmax(obs[..., base:base + 13], axis=-1)
+                extended[..., A_FACE_UP_SLOT_0 + slot] = np.take_along_axis(logits, np.expand_dims(ranks, -1), axis=-1)[..., 0]
+            logits = extended
+        if logits.shape != mask.shape:
+            raise ValueError("policy/action mask schema mismatch")
         return np.where(mask, logits, -1e9)
 
     def value(self, obs: np.ndarray) -> float:

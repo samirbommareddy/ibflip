@@ -56,12 +56,12 @@ def main() -> None:
     args = parser.parse_args()
     w = args.workers
     with Pool(w) as pool:
-        print(f"{'n':>2} {'matchup':<28} {'win':>6} {'fair':>6} {'score':>7} {'illegal':>8}")
+        print(f"{'n':>2} {'matchup':<28} {'win':>6} {'fair':>6} {'score':>7} {'illegal':>8} {'8-loss':>8} {'cutoff':>8}")
         for n in [int(x) for x in args.players.split(",")]:
             for hero, villain in (("shark", "heuristic"), ("shark", "random"), ("heuristic", "shark"), ("heuristic", "random")):
                 rs = pool.map(_job, [(hero, villain, n, args.games // w, 1000 * n + 17 * i, args.model) for i in range(w)])
                 avg = lambda k: sum(r[k] for r in rs) / len(rs)
-                print(f"{n:>2} {hero + ' vs ' + villain + ' table':<28} {avg('win_rate'):6.3f} {1 / n:6.3f} {avg('mean_score'):7.3f} {avg('illegal_loss_rate'):8.3f}", flush=True)
+                print(f"{n:>2} {hero + ' vs ' + villain + ' table':<28} {avg('win_rate'):6.3f} {1 / n:6.3f} {avg('mean_score'):7.3f} {avg('illegal_loss_rate'):8.3f} {avg('eights_loss_rate'):8.3f} {avg('truncation_rate'):8.3f}", flush=True)
             lens = [x for r in pool.map(_lengths, [(n, 10, 50 + i, args.model) for i in range(w)]) for x in r]
             print(f"{n:>2} {'shark self-play length':<28} median {statistics.median(lens):.0f} steps, capped {sum(x >= 3000 for x in lens)}/{len(lens)}", flush=True)
 

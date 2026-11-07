@@ -24,6 +24,7 @@ from ibflip.ai.arena import game_result, score
 from ibflip.ai.observation import (
     A_END_GROUP,
     A_FACE_DOWN,
+    A_FACE_UP_SLOT_0,
     A_PICK_UP,
     A_REVEAL,
     NUM_COMPACT_ACTIONS,
@@ -83,16 +84,19 @@ class FastRollout:
         state = engine.state
         group = state.turn_context.open_group_rank
         live = state.live_cards
+        _, mapping = compact_legal(engine)
+        rank_for = lambda a: RANK_INDEX_BY_ID[mapping[int(a)][0]]
         if group is not None:
             g = int(group)
-            if mask[g] and g not in (int(Rank.TWO), int(Rank.TEN)):
+            continuations = [int(a) for a in legal if (a < 13 or a >= A_FACE_UP_SLOT_0) and rank_for(a) == g]
+            if continuations and g not in (int(Rank.TWO), int(Rank.TEN)):
                 if g != int(Rank.EIGHT) or _run(live) < 3:
-                    return g
+                    return continuations[0]
             return A_END_GROUP if mask[A_END_GROUP] else int(legal[0])
-        ranks = [int(a) for a in legal if a < 13 and not (a == int(Rank.EIGHT) and _run(live) >= 3)]
+        ranks = [int(a) for a in legal if (a < 13 or a >= A_FACE_UP_SLOT_0) and not (rank_for(a) == int(Rank.EIGHT) and _run(live) >= 3)]
         if ranks:
-            best = min(KEEP_BY_INDEX[a] for a in ranks)
-            return self.rng.choice([a for a in ranks if KEEP_BY_INDEX[a] == best])
+            best = min(KEEP_BY_INDEX[rank_for(a)] for a in ranks)
+            return self.rng.choice([a for a in ranks if KEEP_BY_INDEX[rank_for(a)] == best])
         for a in (A_REVEAL, A_FACE_DOWN, A_PICK_UP):
             if mask[a]:
                 return a

@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from ibflip.ai.agents import HeuristicAgent, MLPPolicy, RandomAgent, heuristic_fix  # noqa: E402
-from ibflip.ai.arena import evaluate, game_result, score  # noqa: E402
+from ibflip.ai.arena import MAX_GAME_STEPS, TIMEOUT_REWARD, evaluate, game_result, score  # noqa: E402
 from ibflip.ai.observation import (  # noqa: E402
     NUM_COMPACT_ACTIONS,
     NUM_RANKS,
@@ -47,6 +47,7 @@ from ibflip.ai.observation import (  # noqa: E402
     opponent_order,
     resolve_forced,
 )
+from ibflip.ai.provenance import build_manifest, schema
 from ibflip.cards import RANK_INDEX_BY_ID  # noqa: E402
 from ibflip.engine import IBFlipEngine  # noqa: E402
 from ibflip.state import Phase  # noqa: E402
@@ -170,8 +171,8 @@ def rollout_worker(args) -> dict:
         for i, idxs in traj.items():
             if idxs:
                 episodes.append(idxs)
-                # A stalled game is a loss for everyone: never worth dragging out.
-                rewards.append(cfg["timeout_reward"] if timed_out else score(result, i, num_players))
+                # Preserve already-earned places; unplaced seats lose at cutoff.
+                rewards.append(score(result, i, num_players, cfg["timeout_reward"]))
         games += 1
         lens.append(steps)
         timeouts_count += int(timed_out)
@@ -220,43 +221,35 @@ def selfplay_len_worker(args) -> dict:
 
 def h2h_worker(args) -> dict:
     """Mean score of ONE `hero` seat vs a table of `villain` (deployed agent logic)."""
-    hero_w, villain_w, num_players, games, seed = args
+    hero_w, villain_w, num_players, games, seed, *limits = args
+    max_steps, timeout_reward = limits or [MAX_GAME_STEPS, TIMEOUT_REWARD]
     from ibflip.ai.agents import NeuralAgent
     from ibflip.ai.arena import play_game
 
     hero_p, villain_p = MLPPolicy(hero_w), MLPPolicy(villain_w)
     rng = random.Random(seed)
-    total, wins = 0.0, 0
+    total, wins, truncations = 0.0, 0, 0
     for g in range(games):
         seat = g % num_players
         agents = [NeuralAgent(hero_p if i == seat else villain_p, seed=rng.randrange(2**31)) for i in range(num_players)]
-        result = play_game(agents, seed=rng.randrange(2**31), max_steps=1500)
-        total += score(result, seat, num_players)
+        result = play_game(agents, seed=rng.randrange(2**31), max_steps=max_steps)
+        total += score(result, seat, num_players, timeout_reward)
         wins += result["winner"] == seat
-    return {"score": total, "wins": wins, "games": games}
+        truncations += result["truncated"]
+    return {"score": total, "wins": wins, "games": games, "truncations": truncations}
 
 
 def eval_worker(args) -> dict:
-    weights, num_players, games, seed, opponent = args
+    weights, num_players, games, seed, opponent, *limits = args
+    max_steps, timeout_reward = limits or [MAX_GAME_STEPS, TIMEOUT_REWARD]
     policy = MLPPolicy(weights)
 
-    class Greedy:
-        def __init__(self):
-            self.rng = random.Random(seed)
-
-        def fix(self, engine, idx):
-            heuristic_fix(engine, idx)
-
-        def choose(self, engine):
-            mask, mapping = compact_legal(engine)
-            if mask.sum() == 1:
-                a = int(np.flatnonzero(mask)[0])
-            else:
-                a = int(np.argmax(policy.logits(encode(engine, engine.state.current_player), mask)))
-            return self.rng.choice(mapping[a])
-
+    from ibflip.ai.agents import NeuralAgent
+    rng = random.Random(seed)
     villain = {"heuristic": HeuristicAgent, "random": RandomAgent}[opponent]
-    return evaluate(Greedy, villain, num_players, games, seed=seed)
+    return evaluate(lambda: NeuralAgent(policy, seed=rng.randrange(2**31)),
+                    lambda: villain(rng.randrange(2**31)), num_players, games,
+                    seed=seed, max_steps=max_steps, timeout_reward=timeout_reward)
 
 
 # --------------------------------------------------------------------------
@@ -312,8 +305,8 @@ def widen_inputs(torch, ck) -> bool:
     return True
 
 
-def export_actor(actor) -> dict:
-    out = {}
+def export_actor(actor, manifest: dict | None = None) -> dict:
+    out = {"metadata": np.array(json.dumps(manifest or {"schema": schema()}, sort_keys=True))}
     linears = [m for m in actor.trunk if hasattr(m, "weight")]
     for i, lin in enumerate(linears):
         out[f"w{i}"] = lin.weight.detach().cpu().numpy().T.copy()
@@ -324,7 +317,7 @@ def export_actor(actor) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--out", default="runs/main")
     parser.add_argument("--hours", type=float, default=2.0)
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
@@ -344,14 +337,25 @@ def main() -> None:
     parser.add_argument("--eval-games", type=int, default=400)
     parser.add_argument("--async-rollouts", type=int, default=1)
     parser.add_argument("--player-counts", default="2,2,3,3,4,4,5,5")
-    parser.add_argument("--max-steps", type=int, default=1000)
+    parser.add_argument("--max-steps", type=int, default=MAX_GAME_STEPS)
     parser.add_argument("--champion", default=None, help="actor .npz to train against and evaluate head-to-head")
     parser.add_argument("--champion-frac", type=float, default=0.35)
     parser.add_argument("--h2h-games", type=int, default=2000, help="games per player count per direction")
     parser.add_argument("--lr-end", type=float, default=None, help="linearly decay LR to this by the deadline")
     parser.add_argument("--init-actor", default=None, help="actor .npz to initialise from")
-    parser.add_argument("--timeout-reward", type=float, default=-1.0)
+    parser.add_argument("--timeout-reward", type=float, default=TIMEOUT_REWARD)
+    parser.add_argument("--iterations", type=int, default=None, help="optional bound for local smoke runs")
     args = parser.parse_args()
+    if args.workers < 1 or args.decisions < args.workers or args.hours <= 0 or args.max_steps < 1 or args.epochs < 1 or args.minibatch < 1:
+        parser.error("workers, hours, max steps, epochs and minibatch must be positive; decisions must cover workers")
+    if args.iterations is not None and args.iterations < 1:
+        parser.error("iterations must be positive")
+    if not args.player_counts or any(int(n) not in (2, 3, 4, 5) for n in args.player_counts.split(',')):
+        parser.error("player counts must be 2–5")
+    if args.resume and args.init_actor:
+        parser.error("choose resume or init-actor")
+    if args.timeout_reward != TIMEOUT_REWARD:
+        parser.error("timeout reward must match the shared evaluation scoring contract (-1)")
 
     import torch
 
@@ -359,6 +363,9 @@ def main() -> None:
     torch.manual_seed(args.seed)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    manifest = build_manifest(ROOT, vars(args))
+    if not args.resume and (out / "checkpoint.pt").exists():
+        raise ValueError("output already has a checkpoint; use --resume or choose a new output directory")
     hidden = [int(h) for h in args.hidden.split(",")]
     actor, critic = build_models(torch, hidden)
     opt = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=args.lr, eps=1e-5)
@@ -366,6 +373,9 @@ def main() -> None:
     start_iter = 0
     if args.resume:
         ck = torch.load(args.resume, weights_only=False)
+        previous = ck.get("manifest", {})
+        if previous.get("schema") != schema() or previous.get("source_digest") != manifest["source_digest"]:
+            raise ValueError("checkpoint rules/schema/source changed; use --init-actor to warm start instead of resuming")
         widened = widen_inputs(torch, ck)
         actor.load_state_dict(ck["actor"])
         critic.load_state_dict(ck["critic"])
@@ -376,9 +386,10 @@ def main() -> None:
 
     champion_w = dict(np.load(args.champion)) if args.champion else None
     if champion_w is not None:
-        champion_w = {k: v.astype(np.float32) for k, v in champion_w.items()}
+        MLPPolicy(champion_w)  # validate schema before worker startup
     if args.init_actor:
-        init = np.load(args.init_actor)
+        init = np.load(args.init_actor, allow_pickle=False)
+        MLPPolicy(init)
         linears = [m for m in actor.trunk if hasattr(m, "weight")]
         with torch.no_grad():
             for i, lin in enumerate(linears):
@@ -387,8 +398,14 @@ def main() -> None:
                     w_init = np.concatenate([w_init, np.zeros((OBS_SIZE - w_init.shape[0], w_init.shape[1]), np.float32)])
                 lin.weight.copy_(torch.from_numpy(w_init.T))
                 lin.bias.copy_(torch.from_numpy(init[f"b{i}"].astype(np.float32)))
-            actor.head.weight.copy_(torch.from_numpy(init["pw"].astype(np.float32).T))
-            actor.head.bias.copy_(torch.from_numpy(init["pb"].astype(np.float32)))
+            head = init["pw"].astype(np.float32)
+            bias = init["pb"].astype(np.float32)
+            if head.shape[1] not in (17, NUM_COMPACT_ACTIONS):
+                raise ValueError("unsupported initial actor actions")
+            actor.head.weight.zero_()
+            actor.head.bias.zero_()
+            actor.head.weight[:head.shape[1]].copy_(torch.from_numpy(head.T))
+            actor.head.bias[:len(bias)].copy_(torch.from_numpy(bias))
     cfg = {
         "player_counts": [int(x) for x in args.player_counts.split(",")],
         "selfplay_frac": 0.6,
@@ -398,6 +415,7 @@ def main() -> None:
         "champion_frac": args.champion_frac,
         "timeout_reward": args.timeout_reward,
     }
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     ctx = mp.get_context("fork")
     procs = ctx.Pool(args.workers)
     deadline = time.time() + args.hours * 3600
@@ -406,144 +424,165 @@ def main() -> None:
     seed_rng = random.Random(args.seed + start_iter)
     per = args.decisions // args.workers
 
+    def save_actor(path, weights):
+        temporary = path.with_suffix('.tmp')
+        with temporary.open('wb') as stream:
+            np.savez(stream, **weights)
+        temporary.replace(path)
+
+    def save_checkpoint():
+        temporary = out / 'checkpoint.tmp'
+        torch.save({"actor": actor.state_dict(), "critic": critic.state_dict(),
+                    "opt": opt.state_dict(), "pool": pool, "iter": it,
+                    "hidden": hidden, "manifest": manifest}, temporary)
+        temporary.replace(out / 'checkpoint.pt')
+
     def launch():
-        w = export_actor(actor)
+        w = export_actor(actor, manifest)
         jobs = [(w, pool[-16:], per, seed_rng.randrange(2**31), cfg) for _ in range(args.workers)]
         return procs.map_async(rollout_worker, jobs)
 
     # Rollouts for iteration k+1 run while the learner updates on k (one
     # iteration of policy lag; PPO's ratio uses the behaviour log-probs).
-    pending = launch()
-    t_start = time.time()
-    while time.time() < deadline:
-        t0 = time.time()
-        if args.lr_end is not None:
-            frac = min(1.0, (t0 - t_start) / max(1.0, deadline - t_start))
-            for group in opt.param_groups:
-                group["lr"] = args.lr + (args.lr_end - args.lr) * frac
-        results = pending.get()
-        t_roll = time.time() - t0
-        pending = launch() if args.async_rollouts else None
+    def timed_map(fn, jobs):
+        return procs.map_async(fn, jobs).get(timeout=max(.01, deadline - time.time()))
 
-        obs = np.concatenate([r["obs"] for r in results])
-        priv = np.concatenate([r["priv"] for r in results])
-        mask = np.concatenate([r["mask"] for r in results])
-        act = np.concatenate([r["act"] for r in results])
-        old_logp = np.concatenate([r["logp"] for r in results])
-        offsets = np.cumsum([0] + [len(r["act"]) for r in results])
-        episodes, rewards = [], []
-        for off, r in zip(offsets, results):
-            for idxs, rew in zip(r["episodes"], r["rewards"]):
-                episodes.append([off + i for i in idxs])
-                rewards.append(rew)
+    try:
+        pending = launch()
+        t_start = time.time()
+        while time.time() < deadline and (args.iterations is None or it - start_iter < args.iterations):
+            t0 = time.time()
+            if args.lr_end is not None:
+                frac = min(1.0, (t0 - t_start) / max(1.0, deadline - t_start))
+                for group in opt.param_groups:
+                    group["lr"] = args.lr + (args.lr_end - args.lr) * frac
+            try:
+                results = pending.get(timeout=max(0.01, deadline - time.time()))
+            except mp.TimeoutError:
+                break
+            t_roll = time.time() - t0
+            pending = launch() if args.async_rollouts and (args.iterations is None or it + 1 - start_iter < args.iterations) else None
 
-        with torch.no_grad():
-            values = critic(torch.from_numpy(obs), torch.from_numpy(priv)).numpy()
-        adv = np.zeros(len(act), dtype=np.float32)
-        ret = np.zeros(len(act), dtype=np.float32)
-        lam = args.gae_lambda
-        for idxs, rew in zip(episodes, rewards):
-            next_v, gae = 0.0, 0.0
-            for j in reversed(range(len(idxs))):
-                i = idxs[j]
-                r = rew if j == len(idxs) - 1 else 0.0
-                delta = r + next_v - values[i]
-                gae = delta + lam * gae
-                adv[i] = gae
-                ret[i] = gae + values[i]
-                next_v = values[i]
+            obs = np.concatenate([r["obs"] for r in results])
+            priv = np.concatenate([r["priv"] for r in results])
+            mask = np.concatenate([r["mask"] for r in results])
+            act = np.concatenate([r["act"] for r in results])
+            old_logp = np.concatenate([r["logp"] for r in results])
+            offsets = np.cumsum([0] + [len(r["act"]) for r in results])
+            episodes, rewards = [], []
+            for off, r in zip(offsets, results):
+                for idxs, rew in zip(r["episodes"], r["rewards"]):
+                    episodes.append([off + i for i in idxs])
+                    rewards.append(rew)
 
-        t_obs = torch.from_numpy(obs)
-        t_priv = torch.from_numpy(priv)
-        t_mask = torch.from_numpy(mask)
-        t_act = torch.from_numpy(act)
-        t_old = torch.from_numpy(old_logp)
-        t_adv = torch.from_numpy((adv - adv.mean()) / (adv.std() + 1e-8))
-        t_ret = torch.from_numpy(ret)
-        N = len(act)
-        stats = {"pl": 0.0, "vl": 0.0, "ent": 0.0, "kl": 0.0, "clipfrac": 0.0}
-        nb = 0
-        for _ in range(args.epochs):
-            perm = torch.randperm(N)
-            for s in range(0, N, args.minibatch):
-                b = perm[s : s + args.minibatch]
-                logits = actor(t_obs[b], t_mask[b])
-                logp_all = torch.log_softmax(logits, -1)
-                logp = logp_all.gather(1, t_act[b, None]).squeeze(1)
-                ratio = torch.exp(logp - t_old[b])
-                a_b = t_adv[b]
-                pl = -torch.min(ratio * a_b, torch.clamp(ratio, 1 - args.clip, 1 + args.clip) * a_b).mean()
-                probs = logp_all.exp()
-                ent = -(probs * torch.where(t_mask[b], logp_all, torch.zeros_like(logp_all))).sum(-1).mean()
-                v = critic(t_obs[b], t_priv[b])
-                vl = ((v - t_ret[b]) ** 2).mean()
-                loss = pl + 0.5 * vl - args.ent * ent
-                opt.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(list(actor.parameters()) + list(critic.parameters()), 0.5)
-                opt.step()
-                with torch.no_grad():
-                    stats["pl"] += pl.item()
-                    stats["vl"] += vl.item()
-                    stats["ent"] += ent.item()
-                    stats["kl"] += (t_old[b] - logp).mean().item()
-                    stats["clipfrac"] += ((ratio - 1).abs() > args.clip).float().mean().item()
-                nb += 1
-        stats = {k: v / nb for k, v in stats.items()}
-        if pending is None:
-            pending = launch()
-        it += 1
-        rec = {
-            "iter": it,
-            "decisions": int(N),
-            "games": sum(r["games"] for r in results),
-            "mean_len": float(np.mean([r["mean_len"] for r in results])),
-            "mean_reward": float(np.mean(rewards)) if rewards else 0.0,
-            "timeouts": sum(r["timeouts"] for r in results),
-            "t_roll": round(t_roll, 1),
-            "t_total": round(time.time() - t0, 1),
-            **{k: round(v, 4) for k, v in stats.items()},
-        }
+            with torch.no_grad():
+                values = critic(torch.from_numpy(obs), torch.from_numpy(priv)).numpy()
+            adv = np.zeros(len(act), dtype=np.float32)
+            ret = np.zeros(len(act), dtype=np.float32)
+            lam = args.gae_lambda
+            for idxs, rew in zip(episodes, rewards):
+                next_v, gae = 0.0, 0.0
+                for j in reversed(range(len(idxs))):
+                    i = idxs[j]
+                    r = rew if j == len(idxs) - 1 else 0.0
+                    delta = r + next_v - values[i]
+                    gae = delta + lam * gae
+                    adv[i] = gae
+                    ret[i] = gae + values[i]
+                    next_v = values[i]
 
-        if it % args.snapshot_every == 0:
-            pool.append(export_actor(actor))
-            pool = pool[-24:]
-        if it % args.eval_every == 0:
-            w = export_actor(actor)
-            chunks = max(1, args.workers)
-            if champion_w is not None:
-                combined = []
-                for np_ in (2, 3, 4, 5):
-                    per_h2h = max(2, args.h2h_games // chunks)
-                    a = procs.map(h2h_worker, [(w, champion_w, np_, per_h2h, 1000003 * it + 31 * c + np_) for c in range(chunks)])
-                    b = procs.map(h2h_worker, [(champion_w, w, np_, per_h2h, 2000003 * it + 31 * c + np_) for c in range(chunks)])
-                    sa = sum(x["score"] for x in a) / sum(x["games"] for x in a)
-                    sb = sum(x["score"] for x in b) / sum(x["games"] for x in b)
-                    rec[f"h2h_{np_}p"] = round((sa - sb) / 2, 4)  # >0: candidate beats champion
-                    combined.append((sa - sb) / 2)
-                rec["h2h_mean"] = round(float(np.mean(combined)), 4)
-            else:
-                per_chunk = max(4, args.eval_games // chunks)
-                for np_ in (2, 4):
-                    ev = procs.map(eval_worker, [(w, np_, per_chunk, 7919 * it + 31 * c + np_, "heuristic") for c in range(chunks)])
-                    rec[f"eval_{np_}p_score"] = round(float(np.mean([e["mean_score"] for e in ev])), 4)
-            np.savez(out / f"actor_{it:05d}.npz", **w)
-            np.savez(out / "actor_latest.npz", **w)
-            torch.save(
-                {"actor": actor.state_dict(), "critic": critic.state_dict(), "opt": opt.state_dict(), "pool": pool, "iter": it, "hidden": hidden},
-                out / "checkpoint.pt",
-            )
-        print(json.dumps(rec), flush=True)
-        log.write(json.dumps(rec) + "\n")
-        log.flush()
+            t_obs = torch.from_numpy(obs)
+            t_priv = torch.from_numpy(priv)
+            t_mask = torch.from_numpy(mask)
+            t_act = torch.from_numpy(act)
+            t_old = torch.from_numpy(old_logp)
+            t_adv = torch.from_numpy((adv - adv.mean()) / (adv.std() + 1e-8))
+            t_ret = torch.from_numpy(ret)
+            N = len(act)
+            stats = {"pl": 0.0, "vl": 0.0, "ent": 0.0, "kl": 0.0, "clipfrac": 0.0}
+            nb = 0
+            for _ in range(args.epochs):
+                perm = torch.randperm(N)
+                for s in range(0, N, args.minibatch):
+                    b = perm[s : s + args.minibatch]
+                    logits = actor(t_obs[b], t_mask[b])
+                    logp_all = torch.log_softmax(logits, -1)
+                    logp = logp_all.gather(1, t_act[b, None]).squeeze(1)
+                    ratio = torch.exp(logp - t_old[b])
+                    a_b = t_adv[b]
+                    pl = -torch.min(ratio * a_b, torch.clamp(ratio, 1 - args.clip, 1 + args.clip) * a_b).mean()
+                    probs = logp_all.exp()
+                    ent = -(probs * torch.where(t_mask[b], logp_all, torch.zeros_like(logp_all))).sum(-1).mean()
+                    v = critic(t_obs[b], t_priv[b])
+                    vl = ((v - t_ret[b]) ** 2).mean()
+                    loss = pl + 0.5 * vl - args.ent * ent
+                    opt.zero_grad()
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(list(actor.parameters()) + list(critic.parameters()), 0.5)
+                    opt.step()
+                    with torch.no_grad():
+                        stats["pl"] += pl.item()
+                        stats["vl"] += vl.item()
+                        stats["ent"] += ent.item()
+                        stats["kl"] += (t_old[b] - logp).mean().item()
+                        stats["clipfrac"] += ((ratio - 1).abs() > args.clip).float().mean().item()
+                    nb += 1
+            stats = {k: v / nb for k, v in stats.items()}
+            it += 1
+            if pending is None and (args.iterations is None or it - start_iter < args.iterations):
+                pending = launch()
+            rec = {
+                "iter": it,
+                "decisions": int(N),
+                "games": sum(r["games"] for r in results),
+                "mean_len": float(np.mean([r["mean_len"] for r in results])),
+                "mean_reward": float(np.mean(rewards)) if rewards else 0.0,
+                "timeouts": sum(r["timeouts"] for r in results),
+                "t_roll": round(t_roll, 1),
+                "t_total": round(time.time() - t0, 1),
+                **{k: round(v, 4) for k, v in stats.items()},
+            }
 
-    w = export_actor(actor)
-    np.savez(out / "actor_latest.npz", **w)
-    torch.save(
-        {"actor": actor.state_dict(), "critic": critic.state_dict(), "opt": opt.state_dict(), "pool": pool, "iter": it, "hidden": hidden},
-        out / "checkpoint.pt",
-    )
-    procs.close()
+            if it % args.snapshot_every == 0:
+                pool.append(export_actor(actor, manifest))
+                pool = pool[-24:]
+            if it % args.eval_every == 0:
+                w = export_actor(actor, manifest)
+                chunks = max(1, args.workers)
+                if champion_w is not None:
+                    combined = []
+                    for np_ in (2, 3, 4, 5):
+                        per_h2h = max(2, args.h2h_games // chunks)
+                        a = timed_map(h2h_worker, [(w, champion_w, np_, per_h2h, 1000003 * it + 31 * c + np_, args.max_steps, args.timeout_reward) for c in range(chunks)])
+                        b = timed_map(h2h_worker, [(champion_w, w, np_, per_h2h, 2000003 * it + 31 * c + np_, args.max_steps, args.timeout_reward) for c in range(chunks)])
+                        rec[f"h2h_{np_}p_truncations"] = sum(x["truncations"] for x in a + b)
+                        sa = sum(x["score"] for x in a) / sum(x["games"] for x in a)
+                        sb = sum(x["score"] for x in b) / sum(x["games"] for x in b)
+                        rec[f"h2h_{np_}p"] = round((sa - sb) / 2, 4)  # >0: candidate beats champion
+                        combined.append((sa - sb) / 2)
+                    rec["h2h_mean"] = round(float(np.mean(combined)), 4)
+                else:
+                    per_chunk = max(4, args.eval_games // chunks)
+                    for np_ in (2, 3, 4, 5):
+                        ev = timed_map(eval_worker, [(w, np_, per_chunk, 7919 * it + 31 * c + np_, "heuristic", args.max_steps, args.timeout_reward) for c in range(chunks)])
+                        rec[f"eval_{np_}p_truncation_rate"] = float(np.mean([e["truncation_rate"] for e in ev]))
+                        rec[f"eval_{np_}p_score"] = round(float(np.mean([e["mean_score"] for e in ev])), 4)
+                save_actor(out / f"actor_{it:05d}.npz", w)
+                save_actor(out / "actor_latest.npz", w)
+                save_checkpoint()
+            print(json.dumps(rec), flush=True)
+            log.write(json.dumps(rec) + "\n")
+            log.flush()
+    except mp.TimeoutError:
+        print(json.dumps({"stopped": "wall_time_limit", "iter": it}), flush=True)
+    finally:
+        try:
+            save_actor(out / "actor_latest.npz", export_actor(actor, manifest))
+            save_checkpoint()
+        finally:
+            procs.terminate()
+            procs.join()
+            log.close()
 
 
 if __name__ == "__main__":

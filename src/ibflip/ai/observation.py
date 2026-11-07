@@ -8,6 +8,7 @@ automatic), so the agents act on *ranks*:
     14     reveal the top card of the draw pile
     15     end the current play group (stop adding same-rank cards)
     16     flip a face-down card (slots are indistinguishable to their owner)
+    17..19 play from face-up slot k (rank actions are hand-only in v3)
 
 The observation is strictly what the acting player is allowed to know: their
 own cards, everything face up, card counts, the discard pile, and the cards
@@ -37,7 +38,11 @@ A_PICK_UP = 13
 A_REVEAL = 14
 A_END_GROUP = 15
 A_FACE_DOWN = 16
-NUM_COMPACT_ACTIONS = 17
+LEGACY_ACTIONS = 17
+A_FACE_UP_SLOT_0 = 17
+NUM_COMPACT_ACTIONS = 20
+OBSERVATION_VERSION = 3
+ACTION_VERSION = 3
 
 _FACE_DOWN_ACTION_IDS = frozenset(FACE_DOWN_ACTIONS)
 
@@ -48,7 +53,11 @@ def compact_legal(engine: IBFlipEngine) -> tuple[np.ndarray, dict[int, list[int]
     mapping: dict[int, list[int]] = {}
     for action in engine.get_legal_action_indices():
         if action < 52:
-            compact = RANK_INDEX_BY_ID[action]
+            if engine._active_source() == "face_up":
+                slots = engine.state.players[engine.state.current_player].face_up_slots
+                compact = A_FACE_UP_SLOT_0 + next(i for i, slot in enumerate(slots) if action in slot)
+            else:
+                compact = RANK_INDEX_BY_ID[action]
         elif action == ACTION_PICK_UP_LIVE_PILE:
             compact = A_PICK_UP
         elif action == ACTION_REVEAL_DRAW_PILE_TOP:
@@ -99,7 +108,15 @@ OBS_SIZE_V1 = _SELF + _LIVE + _PILES + MAX_OPPONENTS * _OPP + _FLAGS
 # missing from the unseen part of their hand. Appending keeps v1 models valid:
 # they simply read the first OBS_SIZE_V1 entries.
 _LACKS = MAX_OPPONENTS * NUM_RANKS
-OBS_SIZE = OBS_SIZE_V1 + _LACKS
+OBS_SIZE_V2 = OBS_SIZE_V1 + _LACKS
+# Append public slot partitions and placement state; v1/v2 prefixes stay exact.
+SLOT_FEATURES = NUM_RANKS + 1  # rank one-hot (all zero if empty), size / 4
+SELF_SLOTS_OFFSET = OBS_SIZE_V2
+SLOTS_SIZE = MAX_PLAYERS * 3 * SLOT_FEATURES
+PLACEMENTS_OFFSET = SELF_SLOTS_OFFSET + SLOTS_SIZE
+# self place; each opponent: finished, place, active-turn distance; active count,
+# best/worst unclaimed place. Padding for missing opponents remains zero.
+OBS_SIZE = PLACEMENTS_OFFSET + MAX_PLAYERS + MAX_OPPONENTS * (MAX_PLAYERS + 2) + 3
 
 
 def encode(engine: IBFlipEngine, player_index: int) -> np.ndarray:
@@ -228,4 +245,35 @@ def encode(engine: IBFlipEngine, player_index: int) -> np.ndarray:
             for r in range(NUM_RANKS):
                 if (mask >> r) & 1:
                     obs[base + r] = 1.0
+    # Slots are public. Do not encode face-down identities or unknown hands.
+    order = [player_index, *opponent_order(engine, player_index)]
+    for k, index in enumerate(order):
+        for slot_index, slot in enumerate(state.players[index].face_up_slots):
+            base = SELF_SLOTS_OFFSET + (k * 3 + slot_index) * SLOT_FEATURES
+            if slot:
+                obs[base + RANK_INDEX_BY_ID[slot[-1]]] = 1.0
+                obs[base + NUM_RANKS] = len(slot) / 4.0
+    o = PLACEMENTS_OFFSET
+    if me.place is not None:
+        obs[o + me.place - 1] = 1.0
+    o += MAX_PLAYERS
+    active_order = []
+    index = player_index
+    for _ in range(sum(p.active for p in state.players)):
+        index = engine._next_player_index(index)
+        active_order.append(index)
+    for index in order[1:]:
+        opponent = state.players[index]
+        obs[o] = float(not opponent.active)
+        if opponent.place is not None:
+            obs[o + opponent.place] = 1.0
+        if opponent.active and index in active_order:
+            obs[o + MAX_PLAYERS + 1] = (active_order.index(index) + 1) / MAX_PLAYERS
+        o += MAX_PLAYERS + 2
+    o = PLACEMENTS_OFFSET + MAX_PLAYERS + MAX_OPPONENTS * (MAX_PLAYERS + 2)
+    obs[o] = sum(p.active for p in state.players) / MAX_PLAYERS
+    taken = {p.place for p in state.players if p.place is not None}
+    free = [place for place in range(1, engine.num_players + 1) if place not in taken]
+    if free:
+        obs[o + 1], obs[o + 2] = free[0] / MAX_PLAYERS, free[-1] / MAX_PLAYERS
     return obs

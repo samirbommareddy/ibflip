@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import os
+import math
+import shlex
 import subprocess
 import sys
 import threading
@@ -23,6 +25,8 @@ image = (
     .pip_install("numpy", "torch", extra_index_url="https://download.pytorch.org/whl/cpu")
     .add_local_dir(ROOT / "src", "/app/src")
     .add_local_dir(ROOT / "scripts", "/app/scripts")
+    .add_local_file(ROOT / "docs/rules-audit.md", "/app/docs/rules-audit.md")
+    .add_local_file(ROOT / "IB-Flip__The_Complete_Rules.pdf", "/app/IB-Flip__The_Complete_Rules.pdf")
 )
 volume = modal.Volume.from_name("ibflip-runs", create_if_missing=True)
 app = modal.App("ibflip-selfplay", image=image)
@@ -30,18 +34,27 @@ app = modal.App("ibflip-selfplay", image=image)
 
 @app.function(cpu=CPU, memory=32768, timeout=24 * 3600, volumes={"/runs": volume})
 def train(hours: float, name: str, extra: str = "") -> str:
+    if not math.isfinite(hours) or not 0 < hours <= 8:
+        raise ValueError("training duration must be finite and at most eight hours")
+    if not name or Path(name).is_absolute() or '..' in Path(name).parts:
+        raise ValueError("run name must stay inside the runs volume")
+    parts = shlex.split(extra)
+    if any(part.split('=')[0] in ('--hours', '--out') for part in parts):
+        raise ValueError("extra arguments cannot override the duration or output")
     out = f"/runs/{name}"
     cmd = [
         sys.executable, "/app/scripts/train_ppo.py", "--out", out, "--hours", str(hours),
-        "--workers", str(CPU * 2 - 4), "--threads", str(CPU), *extra.split(),
+        "--workers", str(max(1, CPU * 2 - 4)), "--threads", str(CPU), *shlex.split(extra),
     ]
     if Path(out, "checkpoint.pt").exists():
         # Restarted (e.g. preempted) run: continue from our own checkpoint,
         # never from the original --resume source.
-        parts = extra.split()
-        if "--resume" in parts:
-            i = parts.index("--resume")
-            del parts[i : i + 2]
+        parts = shlex.split(extra)
+        for option in ("--resume", "--init-actor"):
+            if option in parts:
+                i = parts.index(option)
+                del parts[i : i + 2]
+            parts = [part for part in parts if not part.startswith(option + '=')]
         cmd = cmd[: cmd.index("--threads") + 2] + parts + ["--resume", f"{out}/checkpoint.pt"]
     print("running", " ".join(cmd), flush=True)
     stop = threading.Event()
@@ -51,10 +64,24 @@ def train(hours: float, name: str, extra: str = "") -> str:
             volume.commit()
 
     threading.Thread(target=committer, daemon=True).start()
-    proc = subprocess.run(cmd)
-    stop.set()
-    volume.commit()
-    return f"exit {proc.returncode}"
+    proc = subprocess.Popen(cmd, start_new_session=True)
+    try:
+        return f"exit {proc.wait(timeout=hours * 3600 + 60)}"
+    except subprocess.TimeoutExpired:
+        # Bound billing even if learner/evaluation gets stuck. Kill its whole
+        # process group, including rollout workers, and retain the last atomic
+        # checkpoint. Leave reserve credit for image build/startup and storage.
+        import signal
+        os.killpg(proc.pid, signal.SIGTERM)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+        return "stopped at hard wall-time limit"
+    finally:
+        stop.set()
+        volume.commit()
 
 
 @app.local_entrypoint()
@@ -105,7 +132,7 @@ def h2h(candidates: list[str], champion: str, games: int = 6000) -> list[dict]:
     from train_ppo import h2h_worker
 
     volume.reload()
-    load = lambda p: {k: v.astype(np.float32) for k, v in np.load(p if p.startswith("/") else f"/runs/{p}").items()}
+    load = lambda p: dict(np.load(p if p.startswith("/") else f"/runs/{p}", allow_pickle=False))
     champ = load(champion)
     out = []
     with mp.get_context("fork").Pool(31) as pool:

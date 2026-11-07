@@ -59,6 +59,9 @@ are final. Matching face-up cards can be combined across slots during fixing.
 The shipped Shark predates the corrected rules and needs retraining and fresh
 evaluation; historical strength figures below do not validate the current game.
 
+For the prepared 545-input, 20-action policy and reproducible run instructions,
+see [Shark v3 training](docs/shark-training-v3.md).
+
 ## How the AI works
 
 IB-Flip is a multiplayer game of imperfect information: you can't see the deck,
@@ -72,8 +75,8 @@ trained purely by self-play (PPO):
   counting and cards everyone saw going into an opponent's hand. The critic
   additionally sees the hidden cards during training (asymmetric
   actor-critic), which reduces variance.
-- A game that hits the step cap counts as a loss for everyone, so the policy
-  never learns to stall.
+- A game that hits the step cap keeps earned placements and assigns a loss to
+  unplaced players; training and evaluation share this cutoff rule.
 - At runtime it's a ~1 MB numpy MLP (no torch), with a guard that varies its
   play if the game stops making progress.
 

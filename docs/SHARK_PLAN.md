@@ -1,5 +1,11 @@
 # Shark retraining plan
 
+**Preparation update:** [Shark v3 training](shark-training-v3.md) implements
+slot-aware observations/actions, unified cutoff scoring and checkpoint
+provenance. The shipped weights are still the old baseline. Cloud training
+awaits confirmation of available free credit. The research ideas below remain
+future work; learned fixing and search are not part of the prepared PPO pilot.
+
 A plan for the next time Modal credit is available. It uses what we learned from
 three rounds of PPO, the search benchmark, and the rule changes of November 2026.
 
@@ -75,9 +81,10 @@ Self-play speed decides how far the budget goes. In order of payoff:
 
 ### 6. JavaScript parity first
 
-The browser runs a JavaScript port of the engine and the network. Build the parity tests (Python
-writes traces, JS replays them, states and observation vectors must match) **before** training, so the
-model we evaluate is exactly the model players face.
+The current browser calls the Python backend, sharing its engine and NumPy
+policy implementation. If a JavaScript engine/network port is built, add parity
+tests (Python traces replayed in JS, with matching states and observations) before
+shipping that port. There is no separate JS implementation to test today.
 
 ## Search from the start? (expert iteration)
 

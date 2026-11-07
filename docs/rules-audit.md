@@ -1,5 +1,9 @@
 # Rules and lifecycle audit — 7 November 2026
 
+Follow-up: [Shark v3 training preparation](shark-training-v3.md) addresses the
+slot representation, scoring and provenance limitations recorded below. This
+audit remains a record of the implementation before that follow-up.
+
 The engine and room protocol have regression coverage for the rules below, and
 verified defects found during this audit are repaired. This is evidence for a
 working implementation, not a proof that no possible defect remains. The shipped

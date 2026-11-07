@@ -308,7 +308,7 @@ def test_bot_games_run_to_full_placements_and_score_is_linear():
         scores = [score(result, seat, num_players) for seat in range(num_players)]
         assert abs(sum(scores)) < 1e-9
         assert scores[result["winner"]] == 1.0 and scores[result["loser"]] == -1.0
-    assert score({"winner": None, "loser": None, "places": [1, None, 2]}, 1, 3) == 0.0
+    assert score({"winner": None, "loser": None, "places": [1, None, 2]}, 1, 3) == -1.0
     assert abs(score({"places": [2, 1, 3, 4]}, 0, 4) - 1.0 / 3) < 1e-9
 
 
@@ -317,13 +317,13 @@ def test_trained_model_still_loads_and_plays_with_finished_opponents():
     agents = [NeuralAgent(seed=i) for i in range(3)] + [RandomAgent()]
     result = play_game(agents, seed=11)
     assert sorted(result["places"]) == [1, 2, 3, 4]
-    # Observation / action shapes are unchanged.
+    # Current schema works alongside the adapted legacy model.
     engine = IBFlipEngine(3, seed=1)
     engine.reset()
     engine.auto_fix_hands_randomly()
     assert encode(engine, engine.state.current_player).shape == (OBS_SIZE,)
     mask, _ = compact_legal(engine)
-    assert mask.shape == (17,) and mask.dtype == np.bool_
+    assert mask.shape == (20,) and mask.dtype == np.bool_
 
 
 def test_finished_human_spectates_until_the_game_is_over():
