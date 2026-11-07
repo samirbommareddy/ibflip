@@ -665,7 +665,7 @@ function renderStatus() {
     } else {
       yours = true;
       text = S.selected === null
-        ? "Tap a hand card, then a face-up card to swap. Good face-up cards: 10, 2, 4, 5, 7."
+        ? "Tap a hand card to swap, or a face-up card to combine matching ranks."
         : `Now tap a face-up card to ${me.face_up.some((sl) => sl.length && rankIx(sl[sl.length - 1]) === rankIx(S.selected)) ? "swap — or a matching one to stack" : "swap"}`;
     }
   } else if (g.status === "playing") {
@@ -718,6 +718,7 @@ function renderMe() {
       const id = Number(c.dataset.card), top = j === ups.length - 1;
       c.classList.toggle("target", fixing && S.selected !== null && top);
       c.classList.toggle("fixable", fixing && top);
+      c.classList.toggle("selected", fixing && S.selected === id);
       c.classList.toggle("legal", top && legalCards.has(id) && g.source === "face_up" && (lockSlot === null || lockSlot === undefined || lockSlot === k));
     });
     const down = $(".card.down", slotEl);
@@ -855,9 +856,20 @@ function fixSlot(k) {
   const slot = me.face_up[k];
   if (S.selected === null) {
     if (slot.length > 1 && me.hand_count < 3 && S.game.draw_count === 0) send({ type: "fix", op: "unstack", slot: k });
+    else if (slot.length) { S.selected = slot[slot.length - 1]; renderGame(); }
     return;
   }
   const top = slot[slot.length - 1];
+  if (slot.includes(S.selected)) { S.selected = null; renderGame(); return; }
+  const fromHand = S.game.hand.includes(S.selected);
+  if (!fromHand && (top === undefined || rankIx(top) !== rankIx(S.selected))) {
+    toast("Choose a matching face-up card to stack.");
+    return;
+  }
+  if (fromHand && slot.length > 1 && rankIx(top) !== rankIx(S.selected)) {
+    toast("Stacks must keep matching ranks.");
+    return;
+  }
   const op = top !== undefined && rankIx(top) === rankIx(S.selected) ? "stack" : "swap";
   send({ type: "fix", op, card: S.selected, slot: k });
   S.selected = null;

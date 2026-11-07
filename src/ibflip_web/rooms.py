@@ -237,7 +237,7 @@ class Seat:
 
     @property
     def connected(self) -> bool:
-        return self.kind == "bot" or bool(self.sockets)
+        return self.kind == "bot" or any(not conn.closed for conn in self.sockets)
 
     def public(self, index: int, host: int | None) -> dict[str, Any]:
         return {
@@ -490,14 +490,15 @@ class Room:
         self.wake.set()
 
     def humans_connected(self) -> bool:
-        return any(s.kind == "human" and s.sockets for s in self.seats)
+        return any(s.kind == "human" and s.connected for s in self.seats)
 
     def expired(self, now: float | None = None) -> bool:
         if self.humans_connected():
             return False
         now = time.time() if now is None else now
         ttl = ROOM_TTL_SECONDS if self.status in ("fixing", "playing") else IDLE_LOBBY_TTL_SECONDS
-        last = max([self.touched] + [s.last_seen for s in self.seats if s.kind == "human"])
+        # Bot/autopilot activity must not keep an abandoned room alive.
+        last = max([s.last_seen for s in self.seats if s.kind == "human"], default=self.touched)
         return now - last > ttl
 
     # ----------------------------------------------------------- broadcasting

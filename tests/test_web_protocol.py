@@ -532,6 +532,7 @@ def test_room_codes_are_six_unambiguous_letters_and_join_is_case_insensitive():
 
 
 def test_room_creation_is_rate_limited_per_ip(monkeypatch):
+    monkeypatch.setattr(main, "TRUSTED_PROXY_HOPS", 1)
     monkeypatch.setattr(main, "CREATE_LIMIT", main.RateLimiter(capacity=2, per_minute=0.001))
     with TestClient(app) as client:
         hdr = {"X-Forwarded-For": "6.6.6.6, 203.0.113.9"}

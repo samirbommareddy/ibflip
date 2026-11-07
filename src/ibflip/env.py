@@ -10,11 +10,9 @@ from pettingzoo import AECEnv
 from ibflip import IBFlipEngine, IllegalActionError
 from ibflip.actions import (
     ACTION_END_PLAY_GROUP,
-    ACTION_PICK_UP_LIVE_PILE,
-    ACTION_RESOLVE_NINE_DRAW,
     ACTION_SPACE_SIZE,
 )
-from ibflip.state import PendingKind, Phase, TurnContext
+from ibflip.state import PendingKind, Phase
 
 
 class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
@@ -52,8 +50,7 @@ class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
         self.agent_selection: str | None = None
         self.total_steps = 0
 
-    @staticmethod
-    def _make_observation_space() -> gym.spaces.Dict:
+    def _make_observation_space(self) -> gym.spaces.Dict:
         return gym.spaces.Dict(
             {
                 "my_hand": gym.spaces.Box(0, 1, shape=(52,), dtype=np.int8),
@@ -64,7 +61,7 @@ class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
                 "discard_pile": gym.spaces.Box(0, 1, shape=(52,), dtype=np.int8),
                 "opponent_face_up": gym.spaces.Box(0, 4, shape=(52,), dtype=np.int8),
                 "opponent_hand_count": gym.spaces.Box(0, 52, shape=(1,), dtype=np.int8),
-                "opponent_face_down_count": gym.spaces.Discrete(4),
+                "opponent_face_down_count": gym.spaces.Discrete(3 * (self.num_players_config - 1) + 1),
                 "state_flags": gym.spaces.Box(0, 1, shape=(5,), dtype=np.int8),
                 "action_mask": gym.spaces.Box(0, 1, shape=(ACTION_SPACE_SIZE,), dtype=np.int8),
             }
@@ -128,7 +125,7 @@ class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
             "discard_pile": self._card_count_vector(self.engine.state.discard_pile, binary=True),
             "opponent_face_up": np.clip(opponent_face_up, 0, 4).astype(np.int8),
             "opponent_hand_count": np.array([opponent_hand_count], dtype=np.int8),
-            "opponent_face_down_count": np.int8(min(opponent_face_down_count, 3)),
+            "opponent_face_down_count": np.int8(opponent_face_down_count),
             "state_flags": self._state_flags(),
             "action_mask": self._action_mask_for(agent),
         }
@@ -141,31 +138,23 @@ class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
             self._was_dead_step(action)
             return
 
-        self._clear_rewards()
-        self._cumulative_rewards[agent] = 0.0
-
         acting_player = self.agent_name_mapping[agent]
         legal_mask = self.engine.get_legal_actions()
-        action_is_legal = action is not None and 0 <= int(action) < ACTION_SPACE_SIZE and legal_mask[int(action)]
+        if action is None or not isinstance(action, (int, np.integer)) or not 0 <= action < ACTION_SPACE_SIZE or not legal_mask[action]:
+            raise IllegalActionError(f"illegal action {action}")
+
+        self._clear_rewards()
+        self._cumulative_rewards[agent] = 0.0
 
         before_live_count = len(self.engine.state.live_cards)
         before_hand_count = len(self.engine.state.players[acting_player].hand)
 
-        if not action_is_legal:
-            self.rewards[agent] -= 0.5
-            self._pass_after_illegal_action()
-        else:
-            chosen_action = int(action)
-            try:
-                self.engine.step(chosen_action, validate=False)
-            except IllegalActionError:
-                self.rewards[agent] -= 0.5
-                self._pass_after_illegal_action()
-            else:
-                if chosen_action < 52 or chosen_action == ACTION_END_PLAY_GROUP:
-                    self.rewards[agent] += 0.01
-                if self._picked_up_live_cards(acting_player, before_live_count, before_hand_count):
-                    self.rewards[agent] -= 0.1
+        chosen_action = int(action)
+        self.engine.step(chosen_action, validate=False)
+        if chosen_action < 52 or chosen_action == ACTION_END_PLAY_GROUP:
+            self.rewards[agent] += 0.01
+        if self._picked_up_live_cards(acting_player, before_live_count, before_hand_count):
+            self.rewards[agent] -= 0.1
 
         self.total_steps += 1
         self._apply_terminal_rewards()
@@ -173,6 +162,7 @@ class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
             for live_agent in self.agents:
                 self.truncations[live_agent] = True
 
+        self.agent_selection = self._agent_from_player_index(self.engine.state.current_player)
         self._refresh_infos()
         self._accumulate_rewards()
 
@@ -248,18 +238,6 @@ class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
             return False
         player = self.engine.state.players[player_index]
         return len(self.engine.state.live_cards) == 0 and len(player.hand) > before_hand_count
-
-    def _pass_after_illegal_action(self) -> None:
-        if self.engine.state.pending and self.engine.state.pending.kind is PendingKind.NINE_DRAW:
-            self.engine.step(ACTION_RESOLVE_NINE_DRAW, validate=False)
-            return
-        if self.engine.state.turn_context.open_group_rank is not None and self.engine.state.turn_context.played_card_ids:
-            self.engine.step(ACTION_END_PLAY_GROUP, validate=False)
-            return
-        self.engine.state.required_start_card_id = None
-        self.engine.state.turn_context = TurnContext()
-        self.engine.state.current_player = self.engine._next_player_index(self.engine.state.current_player)
-        self.engine._update_phase()
 
     def _apply_terminal_rewards(self) -> None:
         if self.engine.state.phase is not Phase.GAME_OVER:

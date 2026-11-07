@@ -103,7 +103,7 @@ Never put deployment/admin keys into frontend JavaScript or public assets.
 ## Verification and releases
 
 ```bash
-uv run --locked pytest -q
+uv run --locked python -m pytest -q
 node --test tests/test_review_store.mjs
 ```
 

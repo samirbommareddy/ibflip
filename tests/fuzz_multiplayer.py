@@ -33,7 +33,7 @@ import ibflip_web.rooms as rooms
 A_PICKUP, A_REVEAL, A_END, A_FACEDOWN = 52, 54, 55, 67
 
 PROBLEMS: list[str] = []
-FIX_ERRORS = {"Not fixing now", "Already ready", "illegal swap", "illegal stack", "can only stack matching ranks", "nothing to take back", "hand already full"}
+FIX_ERRORS = {"Not fixing now", "Already ready", "illegal swap", "illegal stack", "can only stack matching ranks", "nothing to take back", "hand already full", "swap would mix ranks in a stack"}
 STATS = Counter()
 PORT = int(__import__("os").environ.get("FUZZ_PORT", random.randint(18000, 19999)))
 
@@ -262,13 +262,17 @@ class Client:
         msg = await self.recv(timeout)
         while msg is not None:
             self.on_msg(msg)
-            if msg["type"] == "error" and msg["message"] not in FIX_ERRORS and self.last_sent is not None:
+            # Malformed/chat/fixing requests can also have outstanding errors;
+            # only action-validation errors can reject last_sent.
+            if msg["type"] == "error" and msg["message"] in ("Not your turn", "Illegal move") and self.last_sent is not None:
                 action, snap_id = self.last_sent
                 self.last_sent = None
                 same_as_prev = bool(self.prev_states) and "game" in self.prev_states[-1] and public_part(self.prev_states[-1]["game"]) == public_part(self.state["game"])
                 if same_as_prev:
                     STATS["ui_resend_after_presence_broadcast"] += 1
-                elif snap_id == id(self.state) and self.inflight == 1 and self.mode == "normal" and getattr(self, "scenario", "") != "simul":
+                elif snap_id == id(self.state) and self.inflight == 1 and self.mode == "normal" and getattr(self, "scenario", "") not in ("simul", "garbage"):
+                    # Those scenarios deliberately send uncorrelated invalid
+                    # requests; the protocol has no request IDs for attribution.
                     problem(f"[{getattr(self, 'scenario', '?')}] {self.name}: fresh advertised action {action} rejected: {msg['message']} game={self.state.get('game', {}).get('legal')} srv_cur={main.registry.get(self.code).engine.state.current_player} srv_legal={main.registry.get(self.code).engine.get_legal_action_indices()} my_conn={main.registry.get(self.code).seats[self.seat].connected} view_cur={self.state['game']['current']} seat={self.seat} hist_tail={[e.get('kind') for e in self.state.get('events', [])]}")
             msg = await self.recv(0)
 

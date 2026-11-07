@@ -47,9 +47,17 @@ for SSH forwarding from your own computer.
 ## Tests
 
 ```bash
-uv run pytest -q
+uv run python -m pytest -q
 uv run python scripts/stress_test.py --games 20000   # random-play fuzzing
 ```
+
+## Rules audit status
+
+See [the rules and lifecycle audit](docs/rules-audit.md) for the rule authority,
+verified fixes, regression coverage, and training limitations. Confirmed plays
+are final. Matching face-up cards can be combined across slots during fixing.
+The shipped Shark predates the corrected rules and needs retraining and fresh
+evaluation; historical strength figures below do not validate the current game.
 
 ## How the AI works
 
@@ -92,8 +100,9 @@ with fair share in brackets):
 | 4 | 25% (25%) | 56% | 15% |
 | 5 | 19% (20%) | 37% | 16% |
 
-Bigger tables leave less room for skill: the game ends at the first finisher,
-so 4–5 player games are short and dominated by the deal.
+These measurements used the earlier rules, where a first finisher ended the
+game. Current games continue until every player has a place; these results
+must be measured again before making strength claims.
 
 Train (needs torch; not a runtime dependency):
 

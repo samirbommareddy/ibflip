@@ -46,8 +46,8 @@ class IBFlipEngine:
     action_space_size = ACTION_SPACE_SIZE
 
     def __init__(self, num_players: int, seed: int | None = None) -> None:
-        if num_players < 2:
-            raise ValueError("IB-Flip requires at least two players")
+        if not 2 <= num_players <= 5:
+            raise ValueError("IB-Flip requires two to five players")
         self.num_players = num_players
         self.rng = random.Random(seed)
         self.state = GameState(players=[Player() for _ in range(num_players)])
@@ -120,7 +120,7 @@ class IBFlipEngine:
             return self._fixing_legal_action_indices()
 
         if state.turn_context.open_group_rank is not None:
-            candidates = self._playable_source_card_ids()
+            candidates = self._playable_source_card_ids() if self._active_source() == state.turn_context.source else []
             slot_index = state.turn_context.face_up_slot
             if slot_index is not None and self._active_source() == "face_up":
                 candidates = self._current_player().face_up_slots[slot_index]
@@ -206,32 +206,36 @@ class IBFlipEngine:
         player = self._fixing_player(player_index)
         if card not in player.hand or not (0 <= slot_index < len(player.face_up_slots)) or not player.face_up_slots[slot_index]:
             raise IllegalActionError("illegal swap")
-        player.hand.remove(card)
         slot = player.face_up_slots[slot_index]
-        if len(slot) == 1:
-            taken = [slot.pop()]
-        else:
-            # Swapping onto a stack swaps the whole stack back into the hand.
-            taken = list(slot)
-            slot.clear()
-        player.hand.extend(taken)
-        player.known_hand.extend(taken)
+        if len(slot) > 1 and self.rank(slot[-1]) is not self.rank(card):
+            raise IllegalActionError("swap would mix ranks in a stack")
+        player.hand.remove(card)
+        taken = slot.pop()
+        player.hand.append(taken)
+        player.known_hand.append(taken)
         if card in player.known_hand:
             player.known_hand.remove(card)
         slot.append(card)
 
     def fix_stack_card(self, player_index: int, card: int, slot_index: int) -> None:
         player = self._fixing_player(player_index)
-        if card not in player.hand or not (0 <= slot_index < len(player.face_up_slots)):
+        if not (0 <= slot_index < len(player.face_up_slots)):
             raise IllegalActionError("illegal stack")
         slot = player.face_up_slots[slot_index]
         if not slot or self.rank(slot[-1]) is not self.rank(card):
             raise IllegalActionError("can only stack matching ranks")
-        player.hand.remove(card)
+        from_hand = card in player.hand
+        source = player.hand if from_hand else next(
+            (other for i, other in enumerate(player.face_up_slots) if i != slot_index and card in other), None
+        )
+        if source is None:
+            raise IllegalActionError("card is not in hand or another face-up slot")
+        source.remove(card)
         if card in player.known_hand:
             player.known_hand.remove(card)
         slot.append(card)
-        self._draw_to_three(player)
+        if from_hand:
+            self._draw_to_three(player)
 
     def fix_unstack_card(self, player_index: int, slot_index: int) -> None:
         player = self._fixing_player(player_index)
@@ -257,7 +261,12 @@ class IBFlipEngine:
     def _fixing_player(self, player_index: int) -> Player:
         if self.state.phase is not Phase.FIXING_HANDS:
             raise IllegalActionError("not in fixing phase")
-        return self.state.players[player_index]
+        if not 0 <= player_index < len(self.state.players):
+            raise IllegalActionError("invalid player")
+        player = self.state.players[player_index]
+        if player.fixing_done:
+            raise IllegalActionError("already ready")
+        return player
 
     def _current_player(self) -> Player:
         return self.state.players[self.state.current_player]
@@ -272,7 +281,17 @@ class IBFlipEngine:
         selected = self.state.fix_selected_card_id
         legal: list[int] = []
         if selected is None:
-            legal.extend(player.hand)
+            # Offer only selections with a valid destination; selecting an
+            # isolated face-up card or a hand card blocked by stacks must not
+            # trap the fixing state with no next action.
+            legal.extend(card for card in player.hand if any(
+                slot and (len(slot) == 1 or self.rank(slot[-1]) is self.rank(card))
+                for slot in player.face_up_slots
+            ))
+            legal.extend(card for source in player.face_up_slots for card in source if any(
+                slot and card not in slot and self.rank(slot[-1]) is self.rank(card)
+                for slot in player.face_up_slots
+            ))
             legal.append(ACTION_FIX_DONE)
             if len(player.hand) < 3 and not self.state.draw_pile:
                 for action, slot_index in FIX_TAKE_FROM_STACK_ACTIONS.items():
@@ -282,13 +301,15 @@ class IBFlipEngine:
             return legal
 
         for action, slot_index in FIX_SWAP_ACTIONS.items():
-            if slot_index < len(player.face_up_slots) and player.face_up_slots[slot_index]:
-                legal.append(action)
+            if selected in player.hand and slot_index < len(player.face_up_slots):
+                slot = player.face_up_slots[slot_index]
+                if slot and (len(slot) == 1 or self.rank(slot[-1]) is self.rank(selected)):
+                    legal.append(action)
         selected_rank = self.rank(selected)
         for action, slot_index in FIX_STACK_ACTIONS.items():
             if slot_index < len(player.face_up_slots):
                 slot = player.face_up_slots[slot_index]
-                if slot and self.rank(slot[-1]) is selected_rank:
+                if slot and selected not in slot and self.rank(slot[-1]) is selected_rank:
                     legal.append(action)
         return legal
 
@@ -320,25 +341,15 @@ class IBFlipEngine:
         selected = self.state.fix_selected_card_id
         if selected is None:
             raise IllegalActionError("no selected card")
-        player.hand.remove(selected)
-        slot_card = player.face_up_slots[slot_index].pop()
-        player.hand.append(slot_card)
-        player.known_hand.append(slot_card)
-        if selected in player.known_hand:
-            player.known_hand.remove(selected)
-        player.face_up_slots[slot_index].append(selected)
+        self.fix_swap_card(self.state.current_player, selected, slot_index)
         self.state.fix_selected_card_id = None
 
     def _fix_stack(self, player: Player, slot_index: int) -> None:
         selected = self.state.fix_selected_card_id
         if selected is None:
             raise IllegalActionError("no selected card")
-        player.hand.remove(selected)
-        if selected in player.known_hand:
-            player.known_hand.remove(selected)
-        player.face_up_slots[slot_index].append(selected)
+        self.fix_stack_card(self.state.current_player, selected, slot_index)
         self.state.fix_selected_card_id = None
-        self._draw_to_three(player)
 
     def _fix_take_from_stack(self, player: Player, slot_index: int) -> None:
         card = player.face_up_slots[slot_index].pop()
@@ -355,7 +366,10 @@ class IBFlipEngine:
     def _find_starting_player_and_card(self) -> tuple[int, int]:
         best: tuple[int, int, int, int] | None = None
         for player_index, player in enumerate(self.state.players):
-            for value in player.hand:
+            # Exhausted-deck fixing can leave a hand empty. Such a player
+            # starts from their visible slots, just as on a normal turn.
+            available = player.hand or [card for slot in player.face_up_slots for card in slot]
+            for value in available:
                 score = (STARTING_LOWEST_ORDER[self.rank(value)], int(SUIT_BY_ID[value]), player_index, value)
                 if best is None or score < best:
                     best = score
