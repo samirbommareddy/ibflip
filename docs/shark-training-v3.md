@@ -161,3 +161,38 @@ running; it is not evidence that the model is stronger yet.
 - Periodic volume commits run every five minutes. Snapshots are retained every
   five iterations; full checkpoints/latest actor are saved at evaluation and exit.
 - No model promotion, Git push, website deployment or paid-plan change occurred.
+
+### Monitoring and shutdown result
+
+The local watchdog checked progress and billing every five minutes, kept an
+absolute stop deadline, and downloaded verified backups around 30, 60 and 90
+minutes. Modal restarted the container during the run; automatic resumption
+reset the old per-process duration. The independent watchdog therefore stopped
+the app at **16:12 Stockholm time**, rather than allowing that new timer to run
+for another full window. Logs showed progress through iteration 757. The latest
+committed actor and resumable checkpoint retained iteration 740.
+
+Modal subsequently reported **zero containers**, with the app stopped and zero
+tasks. The latest billing check (16:17 Stockholm time) reported **$2.11005220
+metered**, covered by **$2.11 in credits** and the network allowance, with
+**$0 billed**. Earlier snapshots reported $2.13 before billing adjustments settled. This is the
+reported billing state at shutdown, not an assertion about unrelated future
+workspace use.
+
+Artifacts and monitoring receipts are downloaded under
+`runs/shark-v3-20261107-main-7c67960/`. The shipped model was not changed. A fresh
+validation is still required before promoting a candidate.
+
+The wrapper now persists `run-budget.json` and commits its original absolute
+deadline before starting the trainer. Container restarts consume only the
+remaining time; they cannot reset or extend the original budget. Six local
+regressions cover restarts, attempted extension, expiry and invalid budgets.
+This fix was tested locally; no replacement cloud training was launched.
+
+
+Final artifact verification checked all 38 actor files for readable schemas and
+finite weights, confirmed the latest actor exactly matches the resumable Torch
+checkpoint at iteration 740, and completed local smoke games at all four table
+sizes. These are integrity/legality checks, not evidence for model promotion.
+Logs include repeated iteration numbers from checkpoint resumption; do not sum
+all log rows as if they were unique training updates.

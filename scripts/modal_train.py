@@ -50,6 +50,17 @@ def train(hours: float, name: str, extra: str = "") -> str:
     if any(part.split('=')[0] in ('--hours', '--out') for part in parts):
         raise ValueError("extra arguments cannot override the duration or output")
     out = f"/runs/{name}"
+    sys.path.insert(0, '/app/src')
+    from ibflip.training_budget import remaining_run_hours
+
+    # Platform preemption can restart this function even with input retries=0.
+    # Persist the original deadline before compute starts; a restart must use
+    # the remaining budget rather than starting another full two-hour window.
+    remaining_run_hours(Path(out), hours)
+    volume.commit()
+    hours = remaining_run_hours(Path(out), hours)
+    if hours <= 0:
+        return 'run budget already elapsed'
     cmd = [
         sys.executable, "/app/scripts/train_ppo.py", "--out", out, "--hours", str(hours),
         "--workers", str(max(1, CPU * 2 - 4)), "--threads", str(CPU), *shlex.split(extra),
