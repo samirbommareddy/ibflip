@@ -196,3 +196,124 @@ checkpoint at iteration 740, and completed local smoke games at all four table
 sizes. These are integrity/legality checks, not evidence for model promotion.
 Logs include repeated iteration numbers from checkpoint resumption; do not sum
 all log rows as if they were unique training updates.
+
+
+## Candidate validation
+
+Local-only validation on MSI, 9 November 2026 (no cloud compute). The shipped
+`src/ibflip/ai/model.npz` was not modified or replaced, and nothing was promoted.
+
+**Models.** Candidate = iteration **740**, `cloud-final/.../actor_00740.npz`,
+SHA-256 `58d241d63e7a5741e3e0698444041d04f257afbbf46e5f5c4d3560a79ce67164`, identical to `actor_latest.npz` and to
+`latest_actor_sha256` in `artifact-verification.json`. Backups map by hash to
+iterations: 30 min → 160, 60 min → 360, **90 min → 560**. Baseline = shipped
+Shark, `model.npz` SHA-256 `9f346475588b02fe0313c21173ead05d09eb6f3f40e13da6a5abbafd3b0e61c1`, a 17-action old-rules model
+that plays the v3 engine through the legacy slot adapter. Both play as
+`NeuralAgent` with the runtime defaults (greedy, safety veto, repetition guard),
+as in the game. Regular = `HeuristicAgent`, the web's `medium` bot.
+
+**Protocol** (`scripts/validate_candidate.py`). The unit of pairing is the deal
+(engine seed). For each deal, the candidate plays every seat in turn against a
+baseline table, and one all-baseline control game is played on the same deal with
+the same per-seat agent seeds. The deal statistic is the mean candidate score
+over seats minus the mean control score over seats. Standard errors are computed
+over deals, never over the correlated games within a deal. `rev` is the reverse
+direction: the baseline alone in a candidate table, against an all-candidate
+control. At 2p it is the same experiment. `regular` puts the candidate and the
+baseline each alone in the same Regular table, on the same deal and seat. Scores
+use the shared placement score (1st +1, last −1, unplaced at a cutoff −1).
+Positive means the candidate is better. The deals are fresh seeds (base
+7,400,000), not used by training h2h or `bench_search.py`. A 200-deal pilot on
+other seeds (base 100,000), used only for sizing, agreed with every result
+below.
+
+Per-deal standard deviations under seat rotation were 0.66 (2p), 0.41–0.46 (3p)
+and 0.31–0.35 (4p). These are far below the 1.27 per-game figure in
+`SHARK_PLAN.md`, so the deal counts below give tighter errors than the plan's
+1,000-deal guidance.
+
+### Results (mean score difference ± 1 s.e.; win = first-place rate)
+
+| Players | Matchup | Deals (games) | Candidate − shipped | Candidate win | Shipped win | Fair |
+|---|---|---|---|---|---|---|
+| 2 | 740 vs shipped | 6,000 (18,000) | **+0.117 ± 0.009** | 0.558 | 0.499 | 0.500 |
+| 3 | 740 alone in shipped table | 3,000 (12,000) | +0.007 ± 0.008 | 0.297 | 0.333 | 0.333 |
+| 3 | shipped alone in 740 table (rev) | 1,500 (6,000) | +0.008 ± 0.012 | 0.333 | 0.368 | 0.333 |
+| 4 | 740 alone in shipped table | 3,000 (15,000) | −0.002 ± 0.006 | 0.227 | 0.250 | 0.250 |
+| 4 | shipped alone in 740 table (rev) | 1,500 (7,500) | **−0.020 ± 0.009** | 0.250 | 0.290 | 0.250 |
+
+"Shipped win" is the shipped seat's rate in the paired game: the control game
+for forward rows and the solo shipped seat for `rev` rows. "Candidate win" is
+defined the same way for the candidate.
+
+Sanity check against Regular (each model alone in a Regular table):
+
+| Players | Deals (games) | Candidate score / win | Shipped score / win | Difference |
+|---|---|---|---|---|
+| 2 | 1,500 (6,000) | +0.541 / 0.770 | +0.543 / 0.772 | −0.003 ± 0.019 |
+| 4 | 1,000 (8,000) | +0.186 / 0.306 | +0.187 / 0.326 | −0.001 ± 0.013 |
+
+Training progress (90-minute backup, iteration 560, on the same deal seeds):
+
+| Players | Matchup | Deals | Difference |
+|---|---|---|---|
+| 2 | 560 vs shipped | 2,000 | +0.111 ± 0.015 |
+| 4 | 560 alone in shipped table | 1,500 | −0.006 ± 0.008 |
+| 2 | 740 vs 560 (direct) | 2,000 | −0.017 ± 0.015 |
+
+Other observations:
+- Cutoffs: 16 of 18,000 games at 2p and at most 1 per matchup elsewhere.
+- Illegal finishes occurred in 8–15 % of seats for both models at similar rates.
+  Eights losses were ≤ 0.2 %.
+- Average length per game: 2p ≈ 370 decisions (Shark vs Shark) versus ≈ 214 for
+  the Regular table. 3–4p ran 250–340.
+- At 3p and 4p the candidate has the same mean score but wins first place less
+  often (0.297 vs 0.333 and 0.227 vs 0.250). It trades first places for fewer
+  last places rather than playing better overall.
+
+**Inference cost.** The architecture is unchanged (512-512-256 MLP). Only the
+input width (545 vs 299 consumed) and the action head (20 vs 17) differ.
+Single-process `NeuralAgent.choose` measured **0.24 ms/move (candidate) vs 0.28
+ms/move (shipped)** at 2p and 0.25 vs 0.24 at 4p. A bare forward pass took 0.08–0.09
+ms vs 0.12–0.13 ms. The shipped model pays for the legacy-adapter path. There is no
+meaningful difference either way.
+
+**Interpretation.**
+- The candidate is clearly stronger at **2p**: +0.117 is 13 s.e. and well above
+  the plan's +0.05 bar.
+- At **3p** it is neutral in both directions, consistent with the ≥ 0 bar but not
+  better.
+- At **4p** the forward direction is neutral. The reverse direction is −0.020 ±
+  0.009 (≈ 2.2 s.e.): a shipped seat does slightly better among candidates than
+  the candidates do. That is a small multiplayer regression or noise, not yet
+  resolved.
+- Against Regular both models are indistinguishable at 2p and 4p, so the 2p gain
+  is specific to Shark-vs-Shark play.
+- Iteration 560 matches 740 at both sizes, and 740 does not beat 560 directly (−0.017 ± 0.015). Strength plateaued by roughly 90
+  minutes, matching the flat training `h2h_mean` (≈ 0.02 from iteration ~500).
+  More training with the same configuration is unlikely to fix 3–4p.
+- 5p was not evaluated here; training h2h at 740 read −0.004 at 5p.
+
+**Recommendation: do not promote yet; a targeted larger evaluation is needed.**
+The plan's Phase A bar is met at 2p; 3p is consistent with ≥ 0 but not better. 4p is unresolved, and 5p is untested
+locally. The "Cloud status" section above also asks for a better candidate at every
+table size, which this candidate is not: it is better at 2p and equal elsewhere.
+To decide, run on fresh seeds:
+- **4p, both directions, ≈ 5,000 deals each.** That gives an s.e. of about 0.005,
+  enough to tell −0.01 from 0. It takes about 25 minutes locally with 9 workers.
+- **5p, both directions, ≈ 3,000 deals each.**
+
+If the reverse-direction 4p loss persists (≤ −0.01 beyond 2 s.e.), keep the
+shipped model, or ship the candidate for 2p tables only. Then adjust training
+toward 3–5p (for example, weight `--player-counts` toward 4–5p) instead of
+simply training longer. If 4p and 5p come out ≥ 0, promotion is justified: the
+2p gain is large, the inference cost is unchanged, and the candidate is the
+first model native to the v3 slot actions.
+
+Reproduce (about 40 minutes on MSI with 9 workers):
+
+```bash
+R=/home/samir/projects/ibflip/runs/shark-v3-20261107-main-7c67960/cloud-final/shark-v3-20261107-main-7c67960
+./scripts/with-env uv run --locked python -u scripts/validate_candidate.py --candidate $R/actor_00740.npz \
+  --timing h2h:2:6000 h2h:3:3000 h2h:4:3000 rev:3:1500 rev:4:1500 regular:2:1500 regular:4:1000
+```
