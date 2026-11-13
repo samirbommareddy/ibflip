@@ -294,21 +294,9 @@ meaningful difference either way.
   More training with the same configuration is unlikely to fix 3–4p.
 - 5p was not evaluated here; training h2h at 740 read −0.004 at 5p.
 
-**Recommendation: do not promote yet; a targeted larger evaluation is needed.**
-The plan's Phase A bar is met at 2p; 3p is consistent with ≥ 0 but not better. 4p is unresolved, and 5p is untested
-locally. The "Cloud status" section above also asks for a better candidate at every
-table size, which this candidate is not: it is better at 2p and equal elsewhere.
-To decide, run on fresh seeds:
-- **4p, both directions, ≈ 5,000 deals each.** That gives an s.e. of about 0.005,
-  enough to tell −0.01 from 0. It takes about 25 minutes locally with 9 workers.
-- **5p, both directions, ≈ 3,000 deals each.**
-
-If the reverse-direction 4p loss persists (≤ −0.01 beyond 2 s.e.), keep the
-shipped model, or ship the candidate for 2p tables only. Then adjust training
-toward 3–5p (for example, weight `--player-counts` toward 4–5p) instead of
-simply training longer. If 4p and 5p come out ≥ 0, promotion is justified: the
-2p gain is large, the inference cost is unchanged, and the candidate is the
-first model native to the v3 slot actions.
+**Initial recommendation (9 November): do not promote yet.** The 4p result was
+unresolved and 5p untested, so a targeted 4p/5p run followed. It is reported below
+and supersedes this recommendation.
 
 Reproduce (about 40 minutes on MSI with 9 workers):
 
@@ -316,4 +304,59 @@ Reproduce (about 40 minutes on MSI with 9 workers):
 R=/home/samir/projects/ibflip/runs/shark-v3-20261107-main-7c67960/cloud-final/shark-v3-20261107-main-7c67960
 ./scripts/with-env uv run --locked python -u scripts/validate_candidate.py --candidate $R/actor_00740.npz \
   --timing h2h:2:6000 h2h:3:3000 h2h:4:3000 rev:3:1500 rev:4:1500 regular:2:1500 regular:4:1000
+```
+
+### Follow-up: 4p and 5p (13 November 2026)
+
+This was the targeted run recommended above. It was local only, on 10 workers,
+with fresh deal seeds (base 8,500,000, which overlaps no earlier run). The
+protocol, models and sign convention are the same as above. Wall clock was 34
+minutes, and the planned deal counts ran in full.
+
+| Players | Matchup | Deals (games) | Candidate − shipped | Candidate win | Shipped win | Fair |
+|---|---|---|---|---|---|---|
+| 4 | 740 alone in shipped table | 5,000 (25,000) | −0.007 ± 0.005 | 0.222 | 0.250 | 0.250 |
+| 4 | shipped alone in 740 table (rev) | 5,000 (25,000) | **−0.015 ± 0.005** | 0.250 | 0.282 | 0.250 |
+| 5 | 740 alone in shipped table | 3,000 (18,000) | **−0.018 ± 0.005** | 0.177 | 0.200 | 0.200 |
+| 5 | shipped alone in 740 table (rev) | 3,000 (18,000) | −0.004 ± 0.005 | 0.200 | 0.219 | 0.200 |
+
+Per-deal standard deviations were 0.32/0.35 at 4p and 0.26/0.28 at 5p
+(forward/reverse). Cutoffs were at most 4 games per matchup. Illegal-finish rates
+(10–13 %) and eights losses (≤ 0.2 %) were equal between models.
+
+- **4p:** the reverse direction replicates the first run (−0.020 ± 0.009 then,
+  −0.015 ± 0.005 now, ≈ 2.9 s.e.). The forward direction leans the same way
+  (−0.007 ± 0.005).
+- **5p:** a lone candidate loses −0.018 ± 0.005 (≈ 4 s.e.) in a shipped table.
+  The reverse direction is neutral.
+- Every 4p and 5p estimate is ≤ 0, and two of the four are clearly negative.
+- In every multiplayer matchup the candidate's first-place rate is below the
+  shipped model's.
+- The deficit is small (0.5–2 % of the score range), but it is consistent.
+
+**Updated recommendation: do not promote the candidate as the general Shark.**
+- It fails the Phase A bar (≥ 0 at 3–5p) at 4p and 5p.
+- It fails the stricter "better at every table size" rule outright: it is better
+  only at 2p (+0.117 ± 0.009).
+- No further deals are needed. The 4p/5p question is answered at s.e. ≈ 0.005.
+  Larger samples would only refine a deficit that is already established.
+
+Options, in order of preference:
+1. **Keep the shipped `model.npz`** for all tables.
+2. **Optional:** use the candidate for 2-player tables only. This would need a
+   small runtime change to select the policy by table size (`rooms.py` currently
+   loads one shared policy), plus a 2p regression check. That decision belongs
+   to the owner; nothing has been changed.
+3. **Next training run:** iteration 560 already matched 740, so strength had
+   plateaued. Do not simply train longer. Re-weight `--player-counts` toward 4–5p
+   (the pilot used an even 2–5p mix), and keep the shipped model as a league
+   opponent. Accept a new candidate only if it shows ≥ 0 in both directions at
+   3–5p with s.e. ≤ 0.005, about 5,000 deals at 4p and 3,000 at 5p.
+
+Reproduce the follow-up (about 35 minutes on MSI with 10 workers):
+
+```bash
+R=/home/samir/projects/ibflip/runs/shark-v3-20261107-main-7c67960/cloud-final/shark-v3-20261107-main-7c67960
+./scripts/with-env uv run --locked python -u scripts/validate_candidate.py --workers 10 --seed-base 8500000 \
+  --candidate $R/actor_00740.npz h2h:4:5000 rev:4:5000 h2h:5:3000 rev:5:3000
 ```
