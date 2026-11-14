@@ -38,6 +38,9 @@ _FINISH_NAMES = {
 }
 
 
+_PLAY_PHASES = (Phase.EARLY_GAME, Phase.MIDDLE_GAME, Phase.END_GAME)
+
+
 class IllegalActionError(ValueError):
     pass
 
@@ -109,6 +112,7 @@ class IBFlipEngine:
         self.num_players = len(state.players)
         self.state = deepcopy(state)
         self._update_phase()
+        self._sync_four_loop_flag()
 
     def get_legal_actions(self) -> list[bool]:
         mask = [False] * self.action_space_size
@@ -152,11 +156,10 @@ class IBFlipEngine:
 
         playable = []
         target_rank = self._target_rank_index()
-        required_start = state.required_start_card_id
-        is_start_turn = required_start is not None and not state.turn_context.played_card_ids
-        is_four_loop = state.pending is not None and state.pending.kind is PendingKind.FOUR_LOOP
+        start_cards = self._start_card_options()
+        is_four_loop = self._four_rule_active()
         for candidate in self._playable_source_card_ids_for_source(source):
-            if self._is_legal_card_play_with_context(candidate, target_rank, required_start, is_start_turn, is_four_loop):
+            if self._is_legal_card_play_with_context(candidate, target_rank, start_cards, is_four_loop):
                 playable.append(candidate)
 
         can_reveal = self._can_reveal_draw_pile(playable)
@@ -196,6 +199,7 @@ class IBFlipEngine:
             self._play_card(action)
 
         self._update_phase()
+        self._sync_four_loop_flag()
         return self.state
 
     def auto_fix_hands_randomly(self) -> None:
@@ -463,51 +467,112 @@ class IBFlipEngine:
         return []
 
     def _is_legal_card_play(self, value: int) -> bool:
-        state = self.state
         return self._is_legal_card_play_with_context(
             value,
             self._target_rank_index(),
-            state.required_start_card_id,
-            state.required_start_card_id is not None and not state.turn_context.played_card_ids,
-            state.pending is not None and state.pending.kind is PendingKind.FOUR_LOOP,
+            self._start_card_options(),
+            self._four_rule_active(),
         )
 
     def _is_legal_card_play_with_context(
         self,
         value: int,
         target_rank: int | None,
-        required_start: int | None,
-        is_start_turn: bool,
+        start_cards: frozenset[int] | None,
         is_four_loop: bool,
     ) -> bool:
-        if is_start_turn:
-            return value == required_start
+        if start_cards is not None:
+            return value in start_cards
         if is_four_loop:
             return bool(FOUR_LOOP_RANK_MASK & (1 << RANK_INDEX_BY_ID[value]))
         return can_play_on_index(RANK_INDEX_BY_ID[value], target_rank)
+
+    def _start_card_options(self) -> frozenset[int] | None:
+        """Cards that satisfy the opening requirement, or None after the start.
+
+        The starter must play the lowest card. From the hand that is exactly
+        that card. From a face-up stack (an empty hand after exhausted-deck
+        fixing), every card in the stack has the required rank, and only the
+        top one can be picked up, so any card of that slot counts.
+        """
+        state = self.state
+        required = state.required_start_card_id
+        if required is None or state.turn_context.played_card_ids:
+            return None
+        player = self._current_player()
+        if not player.hand:
+            for slot in player.face_up_slots:
+                if required in slot:
+                    return frozenset(slot)
+        return frozenset((required,))
 
     def _target_rank(self) -> Rank | None:
         target = self._target_rank_index()
         return None if target is None else Rank(target)
 
-    def _target_rank_index(self) -> int | None:
+    def _effective_live_index(self, end: int) -> int | None:
+        """Index of the card a play on ``live_cards[:end]`` goes on.
+
+        "When a 5 is played, the next player must play on the card beneath
+        the 5. If the 5 is the only card in the live cards, the next player
+        plays on zero." Several 5s in a row are all seen through. None means
+        zero (empty pile, only 5s, or a 5 promoted by a 9s flip).
+        """
         state = self.state
-        if not state.live_cards:
-            return None
-        # "When a 5 is played, the next player must play on the card beneath
-        # the 5. If the 5 is the only card in the live cards, the next player
-        # plays on zero." Several 5s in a row are all seen through.
-        index = len(state.live_cards) - 1
+        index = end - 1
         while index >= 0 and RANK_INDEX_BY_ID[state.live_cards[index]] == int(Rank.FIVE):
             if state.live_cards[index] == state.five_on_zero_card_id:
                 return None
             index -= 1
-        if index < 0:
+        return index if index >= 0 else None
+
+    def _target_rank_index(self) -> int | None:
+        state = self.state
+        index = self._effective_live_index(len(state.live_cards))
+        if index is None:
             return None
         card = state.live_cards[index]
         if card in state.ace_as_one_card_ids:
             return None
         return RANK_INDEX_BY_ID[card]
+
+    def _four_rule_active(self) -> bool:
+        """Whether the next player must play a 4, 5 or 6 (or pick up).
+
+        Derived from the live pile, so a 4 brought up by a 9s flip acts like a
+        played one (owner ruling, 14 November 2026). The effective top card
+        (5s seen through) is a 4, or a 6 lying on a 4 or on another such 6:
+        "If a 6 is played on a 4, the next player must play on a 4", and a 6
+        on a 6 inside a 4 chain keeps the chain going (owner ruling).
+        """
+        live = self.state.live_cards
+        index = self._effective_live_index(len(live))
+        while index is not None:
+            rank = RANK_INDEX_BY_ID[live[index]]
+            if rank == int(Rank.FOUR):
+                return True
+            if rank != int(Rank.SIX):
+                return False
+            index = self._effective_live_index(index)
+        return False
+
+    def _sync_four_loop_flag(self) -> None:
+        """Mirror the pile-derived 4 rule into ``state.pending`` for observers.
+
+        Legality never reads the flag; serialization, observations and the
+        training env do. It is only updated between turns, so a player's own
+        open group of 4s does not show as a 4 loop to them.
+        """
+        state = self.state
+        if state.phase not in _PLAY_PHASES or state.turn_context.open_group_rank is not None:
+            return
+        if state.pending is not None and state.pending.kind is PendingKind.NINE_DRAW:
+            return
+        active = self._four_rule_active()
+        if active and state.pending is None:
+            state.pending = PendingEffect(PendingKind.FOUR_LOOP, state.current_player)
+        elif not active and state.pending is not None:
+            state.pending = None
 
     def _can_reveal_draw_pile(self, playable: list[int]) -> bool:
         return self.state.phase is Phase.EARLY_GAME and bool(self.state.draw_pile) and not playable and self._active_source() == "hand"
@@ -643,6 +708,7 @@ class IBFlipEngine:
             next_player = self._next_player_index(player_index)
             self._emit("reverse", player=player_index, direction=self.state.direction)
         elif effect_rank is Rank.FOUR:
+            # The 4 rule itself follows from the pile (``_four_rule_active``).
             self.state.pending = PendingEffect(PendingKind.FOUR_LOOP, player_index)
         elif effect_rank is Rank.EIGHT:
             next_player = self._advance_index(player_index, effect_count + 1)
@@ -836,7 +902,7 @@ class IBFlipEngine:
 
     def _record_lacks(self, player_index: int) -> None:
         state = self.state
-        if state.pending and state.pending.kind is PendingKind.FOUR_LOOP:
+        if self._four_rule_active():
             mask = FOUR_LOOP_RANK_MASK
         else:
             target = self._target_rank_index()

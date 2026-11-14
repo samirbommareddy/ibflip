@@ -2,6 +2,13 @@
 
 Branch `local/bughunt-client`. Tests only; no fixes.
 
+Status (14 November 2026): findings 1, 2 and 6 are fixed server-side on
+branch `local/fix-bughunt-engine` (any card of the face-up stack holding the
+start card satisfies the opening requirement; `compact_legal` lists slot tops
+first so the hint names the top card; the socket handler resolves the seat
+after taking the room lock). Findings 3 to 5 are client fixes handled on a
+separate branch.
+
 ## How to run
 
 ```bash

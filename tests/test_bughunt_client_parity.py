@@ -265,12 +265,6 @@ def test_client_offered_moves_match_engine_for_random_games(players, monkeypatch
         assert coverage[needed] > 0, f"coverage gap: {needed} ({dict(coverage)})"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="BUG: hint names the bottom card of a face-up stack, which the client does not make clickable "
-    "(rooms.hint_action returns mapping[compact][0]; compact_legal lists slot cards bottom first)",
-)
 def test_hint_always_names_a_clickable_card(monkeypatch):
     rng = random.Random(7)
     hits = []
@@ -374,29 +368,25 @@ def test_rigged_deal_setup_is_valid():
     assert st.players[0].hand == []
     assert st.players[0].face_up_slots[0] == [cid("3", "h"), cid("3", "d")]
     assert st.required_start_card_id == cid("3", "h")
-    assert room.engine.get_legal_action_indices() == [cid("3", "h")]
+    # Fixed: any card of the stack holding the start card satisfies the
+    # opening requirement (one rank per stack; only the top can be clicked).
+    assert sorted(room.engine.get_legal_action_indices()) == sorted([cid("3", "h"), cid("3", "d")])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="BUG: required start card buried under a same-rank face-up stack is legal but not clickable; "
-    "the starter has no clickable move until the 90 s idle autopilot (app.js renderMe offers only slot tops)",
-)
 def test_start_card_under_a_face_up_stack_is_clickable():
     room, starter = _rigged_start_state()
     game = room.view_for(starter, [])["game"]
-    assert game["legal"]["cards"] == [cid("3", "h")]
+    assert cid("3", "d") in game["legal"]["cards"]  # the top of the stack holding 3h
     assert not game["legal"]["pick_up"] and not game["legal"]["reveal"] and not game["legal"]["end_group"]
     offered = client_offered(game, starter, None)["actions"]
     assert offered, f"no clickable move; legal={game['legal']} face_up={game['players'][starter]['face_up']}"
+    # Playing the top 3 opens the group; the buried start card can follow.
+    room.act(starter, cid("3", "d"))
+    assert room.engine.get_legal_action_indices() == [cid("3", "h"), A_END]
+    game = room.view_for(starter, [])["game"]
+    assert client_offered(game, starter, 0)["actions"] == {cid("3", "h"), A_END}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="BUG: in the same state the hint says 'Shark would play 3h', a card the client will not let you click",
-)
 def test_hint_for_buried_start_card_is_clickable():
     room, starter = _rigged_start_state()
     game = room.view_for(starter, [])["game"]
@@ -546,13 +536,6 @@ def test_views_never_leak_hidden_cards(players, monkeypatch):
 
 
 # -------------------------------------------------------------- robustness
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="LATENT BUG: room_socket resolves the seat index before handle_message waits for the room lock; "
-    "a seat purge in between makes the queued message act for the wrong seat (today no long lock holder "
-    "exists while seats can shift, so this is not reachable in normal play)",
-)
 def test_message_queued_behind_the_lock_acts_for_the_sender_after_seats_shift():
     """Seats: 0 host, 1 left mid-game, 2 Carol, 3 Dave. Game over.
 

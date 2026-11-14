@@ -577,10 +577,6 @@ def _connected_human_room():
     return room
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "BUG: the fixing idle deadline runs from the deal (Room.turn_started) and Room.fix never "
-    "refreshes it, so a connected human who is actively fixing is autopiloted at 90 s, contrary "
-    "to rooms.py 'A connected human who simply doesn't move gets autopiloted after this long'"))
 def test_a_human_who_is_actively_fixing_is_not_autopiloted_for_idleness():
     import time
 
@@ -595,3 +591,175 @@ def test_a_human_who_is_actively_fixing_is_not_autopiloted_for_idleness():
     assert room._next_auto_deadline() > time.time(), "a fresh fixing move should restart the idle clock"
     room._auto_step()
     assert not me.fixing_done and zones(me) == chosen
+
+
+
+def _give_face_up(engine, seat, slot_index, card):
+    """Rig: swap ``card`` (wherever it is) with the single card in a face-up
+    slot, so the deal stays a permutation of the 52 cards."""
+    state = engine.state
+    slot = state.players[seat].face_up_slots[slot_index]
+    zones_ = [state.draw_pile]
+    for p in state.players:
+        zones_ += [p.hand, p.face_down_slots] + p.face_up_slots
+    holder = next(z for z in zones_ if card in z)
+    holder[holder.index(card)] = slot[0]
+    slot[0] = card
+
+
+def test_autopilot_keeps_an_idle_humans_arrangement():
+    """Owner ruling (14 November 2026): an auto-readied human keeps the cards
+    where they put them; the bot heuristic does not rearrange them."""
+    import time
+
+    from ibflip_web.rooms import IDLE_TURN_TIMEOUT_SECONDS
+
+    room = _connected_human_room()
+    me = room.engine.state.players[0]
+    room.fix(0, "swap", me.hand[0], 0)
+    chosen = zones(me)
+    room.fix_activity[0] = room.turn_started = time.time() - IDLE_TURN_TIMEOUT_SECONDS - 1
+    room._auto_step()
+    assert me.fixing_done and room.status == "playing"
+    assert zones(me) == chosen
+
+
+def test_autopilot_only_refills_empty_slots():
+    import time
+
+    from ibflip_web.rooms import IDLE_TURN_TIMEOUT_SECONDS
+
+    room = _connected_human_room()
+    me = room.engine.state.players[0]
+    kh, ks = card_id(Rank.KING, Suit.HEARTS), card_id(Rank.KING, Suit.SPADES)
+    _give_face_up(room.engine, 0, 0, kh)
+    _give_face_up(room.engine, 0, 1, ks)
+    room.fix(0, "stack", ks, 0)  # combining empties slot 1
+    assert me.face_up_slots[1] == []
+    untouched = (copy.deepcopy(me.face_up_slots[2]), list(me.hand))
+    room.fix_activity[0] = room.turn_started = time.time() - IDLE_TURN_TIMEOUT_SECONDS - 1
+    room._auto_step()
+    assert me.fixing_done and all(me.face_up_slots)
+    assert sorted(me.face_up_slots[0] + me.face_up_slots[1]) == sorted([kh, ks])  # split back off the stack
+    assert (me.face_up_slots[2], me.hand) == untouched
+
+
+# ----------------------------------------- bots fix after the humans (ruling)
+def _bot_room(humans=2, bots=2):
+    from ibflip_web.rooms import Room
+
+    room = Room(code="BOTSXX", host=None)
+    for i in range(humans):
+        room.add_human(f"h{i}")
+    for _ in range(bots):
+        room.add_bot("medium")
+    room.start()
+    return room
+
+
+def test_bots_fix_only_after_every_human_is_ready():
+    """Owner ruling (14 November 2026): humans get first pick of the
+    draw-pile; bots fix and draw only once every human has pressed Ready."""
+    room = _bot_room(humans=2, bots=2)
+    state = room.engine.state
+    dealt = [zones(p) for p in state.players]
+    assert room.status == "fixing"
+    assert not any(p.fixing_done for p in state.players)
+    room.fix(0, "done", None, None)
+    assert [p.fixing_done for p in state.players] == [True, False, False, False]
+    assert [zones(p) for p in state.players[2:]] == dealt[2:], "bots must not touch their cards yet"
+    room.fix(1, "done", None, None)
+    assert room.status == "playing"
+    assert all(p.fixing_done for p in state.players)
+
+
+def test_humans_draw_from_the_pile_before_bots():
+    room = _bot_room(humans=1, bots=3)
+    state = room.engine.state
+    me = state.players[0]
+    mate = next(card for card in range(52) if card // 4 == me.hand[0] // 4 and card != me.hand[0])
+    _give_face_up(room.engine, 0, 0, mate)
+    top_of_pile = state.draw_pile[0]
+    room.fix(0, "stack", me.hand[0], 0)  # stacking from hand draws back to three
+    assert top_of_pile in me.hand
+    assert not any(p.fixing_done for p in state.players[1:])
+    room.fix(0, "done", None, None)
+    assert room.status == "playing"
+    assert all(p.fixing_done for p in state.players)
+
+
+@pytest.mark.parametrize("why", ["idle", "away", "left"])
+def test_auto_readied_humans_end_setup_and_then_bots_fix(why):
+    import time
+    import types
+
+    from ibflip_web.rooms import AUTOPILOT_AFTER_SECONDS, IDLE_TURN_TIMEOUT_SECONDS
+
+    room = _bot_room(humans=2, bots=1)
+    room.fix(1, "done", None, None)
+    assert room.status == "fixing" and not room.engine.state.players[2].fixing_done
+    past = time.time() - max(IDLE_TURN_TIMEOUT_SECONDS, AUTOPILOT_AFTER_SECONDS) - 1
+    room.turn_started = past
+    if why == "idle":
+        room.seats[0].sockets.append(types.SimpleNamespace(closed=False, send=lambda message: None))
+    elif why == "away":
+        room.seats[0].last_seen = past
+    else:
+        room.leave(0)
+        room.seats[0].left_at = past
+    assert room._next_auto_deadline() <= time.time()
+    room._auto_step()
+    assert room.status == "playing"
+    assert all(p.fixing_done for p in room.engine.state.players)
+
+
+def test_a_table_of_bots_only_starts():
+    room = _bot_room(humans=0, bots=3)
+    assert room.status == "playing"
+    assert all(p.fixing_done for p in room.engine.state.players)
+
+
+def test_a_failing_bot_fix_still_ends_setup():
+    room = _bot_room(humans=1, bots=2)
+
+    def broken(engine, index):
+        raise RuntimeError("bot bug")
+
+    room.agents[1].fix = broken
+    room.fix(0, "done", None, None)
+    assert room.status == "playing"
+    assert all(p.fixing_done for p in room.engine.state.players)
+
+
+def test_runner_finishes_setup_if_humans_are_ready_but_bots_are_not():
+    """Self-heal: no human deadline left while still fixing means 'now'."""
+    import time
+
+    room = _bot_room(humans=1, bots=1)
+    room.engine.fix_done(0)  # bypasses Room.fix, as a crashed path might
+    assert room.status == "fixing"
+    assert room._next_auto_deadline() <= time.time()
+    room._auto_step()
+    assert room.status == "playing"
+
+
+def test_fixing_moves_refresh_only_the_movers_idle_clock():
+    import time
+
+    from ibflip_web.rooms import IDLE_TURN_TIMEOUT_SECONDS
+
+    room = _bot_room(humans=2, bots=0)
+    for seat in room.seats:
+        seat.sockets.append(__import__("types").SimpleNamespace(closed=False, send=lambda message: None))
+    room.turn_started = time.time() - IDLE_TURN_TIMEOUT_SECONDS - 1
+    room.fix(0, "swap", room.engine.state.players[0].hand[0], 0)
+    deadlines = room._fix_deadlines()
+    assert deadlines[0] > time.time() and deadlines[1] < time.time()
+    room._auto_step()
+    assert not room.engine.state.players[0].fixing_done
+    assert room.engine.state.players[1].fixing_done
+    # A refused move does not count as activity.
+    room.fix_activity[0] = room.turn_started
+    with pytest.raises(IllegalActionError):
+        room.fix(0, "unstack", None, 0)
+    assert room._fix_deadlines()[0] < time.time()

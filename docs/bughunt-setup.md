@@ -6,6 +6,13 @@ server (ready, autopilot, disconnect, timeouts), `serialize_view` and the
 fixing UI in `static/app.js`. Tests: `tests/test_bughunt_setup.py`. No source
 was changed.
 
+Status (14 November 2026, branch `local/fix-bughunt-engine`): the finding is
+fixed (per-seat idle clock refreshed by accepted fixing moves; auto-ready
+keeps a human's arrangement and only refills empty slots). Owner rulings on
+the questions: bots now fix after every human is ready (question 2); the
+starter rule (question 3) and final Ready (question 4) stay, and the dead
+`undo_done` mention was removed. See `docs/rules-audit.md`.
+
 ## Finding
 
 | Severity | Finding | Test |

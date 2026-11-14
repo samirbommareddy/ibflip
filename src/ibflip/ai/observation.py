@@ -70,6 +70,13 @@ def compact_legal(engine: IBFlipEngine) -> tuple[np.ndarray, dict[int, list[int]
             continue
         mask[compact] = True
         mapping.setdefault(compact, []).append(action)
+    # A face-up stack is played from the top: list it first so callers that
+    # take ``mapping[compact][0]`` (hint, safety checks) name a card the
+    # player can actually pick up. Every card in a slot shares one rank.
+    for compact in range(A_FACE_UP_SLOT_0, NUM_COMPACT_ACTIONS):
+        if compact in mapping:
+            slot = engine.state.players[engine.state.current_player].face_up_slots[compact - A_FACE_UP_SLOT_0]
+            mapping[compact].sort(key=slot.index, reverse=True)
     return mask, mapping
 
 

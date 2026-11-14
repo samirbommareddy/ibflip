@@ -294,10 +294,23 @@ async def room_socket(websocket: WebSocket, code: str, token: str = "") -> None:
 
 
 async def handle_message(room, seat: int, message: dict[str, Any], conn: Conn) -> None:
+    """Apply one client message.
+
+    ``seat`` is the index the caller saw before waiting for the room lock. It
+    is not trusted: seats can be renumbered while the message waits (rematch,
+    back to lobby, lobby removal), so the sender's seat is resolved again from
+    the socket (bound to its token on connect) once the lock is held.
+    """
     kind = message.get("type")
     if kind in ("chat", "emote", "hint", "ping") and not conn.social.take():
         return  # rate limited: silently drop chatter / hint / ping spam
     async with room.lock:
+        resolved = room.seat_of_conn(conn)
+        if resolved is None:  # removed while the message waited
+            conn.send({"type": "kicked"})
+            conn.close()
+            return
+        seat = resolved
         is_host = seat == room.host
         try:
             if kind == "action":

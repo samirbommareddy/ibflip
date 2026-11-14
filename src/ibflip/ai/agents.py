@@ -104,6 +104,10 @@ class RepetitionGuard:
 
 
 def _pick_card(engine: IBFlipEngine, mapping: dict[int, list[int]], compact: int, rng: random.Random) -> int:
+    # Face-up stacks are played from the top (listed first), like a human
+    # would; cards of one rank from the hand are interchangeable.
+    if compact >= A_FACE_UP_SLOT_0:
+        return mapping[compact][0]
     return rng.choice(mapping[compact])
 
 

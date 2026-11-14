@@ -23,10 +23,12 @@ owner decisions from this audit:
   face-up slot holds at least one card. An empty slot is refilled by placing a
   hand card there (the hand then draws back to three, as after stacking; with
   an empty draw-pile the hand stays short) or by moving a card from a face-up
-  stack of two or more into it. Automatic readiness (timeouts, disconnects,
-  bots) runs the bot fixing heuristic, which fills the slot with its best hand
-  card; if the hand is empty, or in the crash fallback, a card is split back
-  off the largest stack, which is always possible. See "Face-up slot
+  stack of two or more into it. Bots run the bot fixing heuristic, which
+  fills the slot with its best hand card. Automatic readiness of a human
+  (timeouts, disconnects, leaving) keeps their arrangement and only refills an
+  empty slot, by splitting a card back off the largest stack, which is always
+  possible (changed 14 November 2026, see "Owner rulings" below; before that
+  the heuristic was run over the human's cards). See "Face-up slot
   correction" below.
 - Existing rulings remain: blocked early-game players may pick up or reveal;
   pickup is forbidden when a legal card is available, including a 4 chain;
@@ -147,6 +149,8 @@ that all three face-up slots must be filled.
   arrangement without drawing; `auto_fix_hands_randomly` uses it.
 - Server: bot readiness, idle/disconnect autopilot and the crash fallback all
   repair before readying, so a room can never stall on a refused ready.
+  (Since 14 November 2026 the autopilot only repairs a human's empty slots and
+  no longer runs `heuristic_fix` over their arrangement.)
 - Bots: `heuristic_fix` refills a slot emptied by combining with its best
   hand card and finishes with the engine repair.
 - Client: an empty slot's face-down card is outlined and clickable, Ready is
@@ -181,3 +185,77 @@ those games. Finite fuzzing does not guarantee delivery/order under every
 possible network or process failure. The engine assumes legal, coherent states
 for `set_state()` and callers using `validate=False`; those internal APIs are
 not untrusted-input validators. The web protocol validates external actions.
+
+## Owner rulings (14 November 2026)
+
+Rulings on the questions raised by the four bug hunts of 14 November 2026
+(`docs/bughunt-setup.md`, `bughunt-play.md`, `bughunt-endgame.md`,
+`bughunt-client-notes.md`). They are authoritative over the PDF where the PDF
+is silent or ambiguous.
+
+Current behaviour confirmed (no code change):
+
+1. Several 8s as the last cards are illegal only if the skips land back on the
+   finisher. Heads-up, two 8s skip the opponent and the finisher, so the
+   opponent plays: a legal finish (also with two players left at a larger
+   table). One or three 8s heads-up are illegal.
+2. Finishing with a 4s flip when the discard pile has no 3 is a legal finish.
+3. A 4s flip may take a 3 that was under the flipped 4s (the flipped live pile
+   goes to the discard pile first).
+4. A 6 played on a 6 during a 4 chain continues the chain.
+5. A 9 that draws a 5: the next player plays on the 9.
+6. A card drawn by a 9 always counts, even if it would not normally fit.
+7. Four 3s: flip only, no change of direction.
+8. Cards brought up by a 9s flip count towards four in a row.
+9. Who starts: the lowest hand card; face-up cards count only if the hand is
+   empty.
+10. Ready is final; there is no un-ready. (The dead `undo_done` mention in
+    `Room.fix` was removed; it was never in the protocol's `FIX_OPS`.)
+
+Changed:
+
+11. A 4 brought to the top of the live pile by a 9s flip acts as a real 4. The
+    4 rule is now derived from the live pile (`IBFlipEngine._four_rule_active`)
+    rather than from a flag set when a 4 is played: the effective top card
+    (5s seen through, a promoted 5 meaning zero) is a 4, or is a 6 lying on a
+    4 or on another such 6. So a 6 played on a promoted 4, or on a 5 on it,
+    makes the next player play a 4, 5 or 6 or pick up, exactly as with a
+    played 4. Played 4 chains are unchanged. `state.pending` still carries a
+    `FOUR_LOOP` marker for the client, observations and the training env; it
+    mirrors the pile rule and is updated between turns (never while a player's
+    own group of 4s is still open). Generalisation, open to overruling: a
+    promoted pile whose top is a 6 directly on a 4 is also treated as a 4
+    chain, consistent with ruling 8 (promoted cards count as played).
+12. Bots fix their hands (and draw) only after every human seat has pressed
+    Ready or been auto-readied, so humans get first pick of the draw-pile;
+    then the bots fix and the game starts. A table with no humans starts at
+    once. A bot whose fixing fails is readied with its dealt arrangement, and
+    the runner finishes setup if all humans are ready but setup has not
+    ended, so setup always ends.
+
+Fixes from the same hunts:
+
+- Setup idle clock: an accepted fixing move (swap, stack, unstack) restarts
+  that seat's idle deadline only (`Room.fix_activity`); refused moves do not.
+  Other seats keep their own clocks, so one active player cannot hold idle
+  players' autopilot back. There is no overall setup cap (none existed): a
+  human who keeps making fixing moves is never autopiloted for idleness.
+  Auto-readied humans keep their arrangement (ruling above).
+- Start card in a face-up stack: when the starter's hand is empty and the
+  required start card lies in a face-up stack, any card of that stack (all
+  share its rank) satisfies the opening requirement, so the stack's top is
+  legal and clickable. The hand case is unchanged.
+- `compact_legal` lists a face-up slot's cards top first; the hint, the bots'
+  card choice and the safety checks take that top card, which the client can
+  click.
+- A refused rematch (fewer than two seats left) no longer purges departed
+  seats; the finished game's seats and results stay intact.
+- The websocket handler resolves the sender's seat after acquiring the room
+  lock, from the socket bound to their token, so a queued message cannot act
+  for another seat after renumbering.
+- Training env cutoff: `IBFlipAECEnv` truncation now matches `arena.score`
+  (placed seats keep their placement score, unplaced seats get the timeout
+  loss). Training only.
+- How to play: the finishing line now says flips of 4s and 9s are treated
+  differently (4s: fine, take a 3 if there is one and stay in; 9s: lose
+  unless the new top card is an 8).

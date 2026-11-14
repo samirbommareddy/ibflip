@@ -272,7 +272,8 @@ def _room_with_combined_human(bots=1):
         room.add_bot("medium")
     room.start()
     for player in room.engine.state.players[1:]:
-        assert player.fixing_done and all(player.face_up_slots)  # bots fixed at start
+        # Bots fix only after every human is ready (owner ruling, 14 Nov 2026).
+        assert not player.fixing_done and all(player.face_up_slots)
     _deal_known_table(room.engine)
     room.fix(0, "stack", Q[1], 0)
     assert room.engine.state.players[0].face_up_slots == [[Q[0], Q[1]], [], [KING_H]]
@@ -295,6 +296,7 @@ def test_room_auto_ready_repairs_an_empty_slot(path):
     seat = room.seats[0]
     seat.last_seen = time.time() - 3600  # disconnected long ago
     room.turn_started = time.time() - 3600
+    room.fix_activity[0] = time.time() - 3600  # and their last fixing move too
     getattr(room, path)()
     assert room.status == "playing"
     assert _slots_full(room.engine)

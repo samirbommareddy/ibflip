@@ -12,6 +12,7 @@ from ibflip.actions import (
     ACTION_END_PLAY_GROUP,
     ACTION_SPACE_SIZE,
 )
+from ibflip.ai.arena import score
 from ibflip.state import PendingKind, Phase
 
 
@@ -159,6 +160,7 @@ class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
         self.total_steps += 1
         self._apply_terminal_rewards()
         if self.total_steps >= self.max_steps and self.engine.state.phase is not Phase.GAME_OVER:
+            self._apply_cutoff_rewards()
             for live_agent in self.agents:
                 self.truncations[live_agent] = True
 
@@ -252,6 +254,14 @@ class IBFlipAECEnv(AECEnv[str, dict[str, Any], int]):
 
         for agent in self.agents:
             self.terminations[agent] = True
+
+    def _apply_cutoff_rewards(self) -> None:
+        """Truncation scores like ``arena.score``: placed seats keep their
+        earned placement score, only unplaced seats get the timeout loss."""
+        players = self.engine.state.players
+        result = {"places": [p.place for p in players], "winner": None, "loser": None}
+        for index in range(len(players)):
+            self.rewards[self._agent_from_player_index(index)] += score(result, index, len(players))
 
     def _refresh_infos(self) -> None:
         for agent in self.agents:

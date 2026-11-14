@@ -1,8 +1,15 @@
 # Endgame bug hunt (14 November 2026)
 
-Failing tests only, no fixes: `tests/test_bughunt_endgame.py`. Each test is
-`xfail(strict=True)`; remove the marker when the item is fixed (or delete
-the test if the owner rules the current behaviour correct).
+Tests: `tests/test_bughunt_endgame.py`.
+
+Status (14 November 2026, branch `local/fix-bughunt-engine`): findings 1, 3
+and 5 are fixed and their tests pass. Finding 4 was ruled by the owner: the
+engine is right (several 8s are illegal only if the skips land back on the
+finisher), and its two tests now assert that two 8s heads-up, or with two
+players left at a four-player table, are a legal finish. Finding 2 is a
+client fix (`static/app.js`) handled on a separate branch; its test stays
+`xfail(strict=True)` until then. Owner rulings on the questions below are in
+`docs/rules-audit.md` ("Owner rulings (14 November 2026)").
 
 ## Findings
 
@@ -11,7 +18,7 @@ the test if the owner rules the current behaviour correct).
 | 1 | Edge case | A refused rematch (host alone after the other human left) purges left seats, then raises "Need at least two players". Status stays "over" with the old engine, but seat indices have shifted: the survivor's view is paired with the leaver's engine seat (wrong place, wrong cards on the results screen). | 2 humans, seat 0 leaves, game ends, seat 1 sends `rematch`. | `test_refused_rematch_does_not_desync_seats_from_the_finished_game` | `rooms.py` `Room.start` (purge before the size check) |
 | 2 | Edge case (client) | Last player left after everyone else finished illegally (place 1, no finish status): results say "You finished first, legally." At 3 to 5 players `youWin` is false (losing sound, no confetti) under a "You win" title. PDF: "A player wins the game if ... they are the last player remaining after all other players have finished illegally." | 3 players, seats 1 and 2 finish illegally, seat 0 views the results. | `test_results_for_last_player_left_after_illegal_finishers` | `static/app.js` `showResult` |
 | 3 | Copy | How to play: "If your last play would give you another turn (a 2, a 10, a flip, or an 8 with two players left), you lose." PDF: "or if they finish by flipping a non-4-or-9 set. If they finish by flipping the 4s they remain in the game ... the player finishes illegally unless that card is an 8". | Read `static/index.html`. | `test_how_to_play_finish_copy_exempts_fours_and_nines_flips` | `static/index.html` |
-| 4 | Ambiguity | Two 8s as the last cards with two players remaining is a legal win (skip opponent, skip self, opponent plays). Odd counts are illegal. PDF lists "an 8 with two players remaining" as illegal, as an instance of "a way that would make it their own turn". | Heads-up, last cards a face-up stack of two 8s on a 6. Fuzz hits it at n=2 seed=13. | `test_two_eights_heads_up_from_a_face_up_stack_is_an_illegal_finish`, `test_two_eights_with_two_players_left_in_a_four_player_game_is_illegal` | `engine.py` `_resolve_committed_cards` (`Rank.EIGHT` branch), `_finish_or_continue` |
+| 4 | Ruled: not a bug | Two 8s as the last cards with two players remaining is a legal win (skip opponent, skip self, opponent plays). Odd counts are illegal. Owner ruling: several 8s are illegal only if the skips land back on the finisher, so the engine is right. | Heads-up, last cards a face-up stack of two 8s on a 6. Fuzz hits it at n=2 seed=13. | `test_two_eights_heads_up_from_a_face_up_stack_is_a_legal_finish`, `test_two_eights_with_two_players_left_in_a_four_player_game_is_legal` | `engine.py` `_resolve_committed_cards` (`Rank.EIGHT` branch), `_finish_or_continue` |
 | 5 | Ambiguity (training only) | `IBFlipAECEnv` truncation gives no placement reward: a seat already placed 1st gets 0, unplaced seats 0. `arena.score` keeps earned places and gives unplaced seats -1. | 3-player AEC env, cut off after the first finish. | `test_aec_truncation_keeps_earned_places_and_penalises_only_unplaced` | `env.py` `_apply_terminal_rewards` |
 
 ## Areas checked and found correct

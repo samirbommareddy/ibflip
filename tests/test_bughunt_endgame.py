@@ -43,17 +43,13 @@ EIGHTS = [c(Rank.EIGHT, s) for s in Suit]
 
 
 # ---------------------------------------------------------------------------
-# PENDING AN OWNER RULING (ambiguity). "Finishing Illegally: If a player
-# finishes a game in a way that would make it their own turn, they finish
-# illegally. This occurs if they finish on a 2, an 8 with two players
-# remaining, or a 10". Read literally, any 8 heads-up is illegal. The engine
-# walks ``count + 1`` seats from the finisher (still counted as active), so
-# an odd number of 8s is illegal and an even number (skip opponent, skip
-# self, opponent plays) is a legal win. These tests encode the literal
-# reading; delete them if the owner rules the engine is right.
+# OWNER RULING (14 November 2026): several 8s as the last cards are illegal
+# only if the skips land back on the finisher. The engine walks ``count + 1``
+# seats from the finisher (still counted while skipping), so heads-up an odd
+# number of 8s is illegal and two 8s (skip opponent, skip self, opponent
+# plays) are a legal finish. These tests pin the ruling.
 # ---------------------------------------------------------------------------
-@pytest.mark.xfail(strict=True, reason="AMBIGUITY pending ruling: two 8s as the last cards heads-up is scored legal; PDF lists any 8 with two players remaining as illegal")
-def test_two_eights_heads_up_from_a_face_up_stack_is_an_illegal_finish():
+def test_two_eights_heads_up_from_a_face_up_stack_is_a_legal_finish():
     engine = make_engine(
         GameState(
             # Last cards: a face-up stack of two 8s (a common fixing choice).
@@ -63,17 +59,17 @@ def test_two_eights_heads_up_from_a_face_up_stack_is_an_illegal_finish():
             phase=Phase.MIDDLE_GAME,
         )
     )
-    engine.step(EIGHTS[0])
     engine.step(EIGHTS[1])
+    engine.step(EIGHTS[0])
     engine.step(ACTION_END_PLAY_GROUP)
     me = engine.state.players[0]
-    assert me.finish_status is FinishStatus.ILLEGAL_LOSS
-    assert me.place == 2
-    assert engine.state.players[1].place == 1
+    assert me.finish_status is FinishStatus.LEGAL_WIN
+    assert me.place == 1
+    assert engine.state.players[1].place == 2
+    assert engine.state.phase is Phase.GAME_OVER
 
 
-@pytest.mark.xfail(strict=True, reason="AMBIGUITY pending ruling: two 8s with two players left is scored legal")
-def test_two_eights_with_two_players_left_in_a_four_player_game_is_illegal():
+def test_two_eights_with_two_players_left_in_a_four_player_game_is_legal():
     out_legal = Player(place=1, active=False, finish_status=FinishStatus.LEGAL_WIN)
     out_illegal = Player(place=4, active=False, finish_status=FinishStatus.ILLEGAL_LOSS)
     engine = make_engine(
@@ -87,8 +83,8 @@ def test_two_eights_with_two_players_left_in_a_four_player_game_is_illegal():
     engine.step(EIGHTS[0])
     engine.step(EIGHTS[1])
     engine.step(ACTION_END_PLAY_GROUP)
-    assert engine.state.players[1].finish_status is FinishStatus.ILLEGAL_LOSS
-    assert [p.place for p in engine.state.players] == [1, 3, 4, 2]
+    assert engine.state.players[1].finish_status is FinishStatus.LEGAL_WIN
+    assert [p.place for p in engine.state.players] == [1, 2, 4, 3]
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +93,6 @@ def test_two_eights_with_two_players_left_in_a_four_player_game_is_illegal():
 # with no terminal reward at all, so a seat that already finished 1st gets 0
 # and unplaced seats also get 0.
 # ---------------------------------------------------------------------------
-@pytest.mark.xfail(strict=True, reason="CONVENTION MISMATCH (training only): AEC env truncation drops earned placement rewards; arena keeps them and gives only unplaced seats -1")
 def test_aec_truncation_keeps_earned_places_and_penalises_only_unplaced():
     env = IBFlipAECEnv(3, seed=2, max_steps=10**9)
     env.reset(seed=2)
@@ -184,7 +179,6 @@ def test_results_for_last_player_left_after_illegal_finishers():
 # ... If they finish by flipping the 9s ... the player finishes illegally
 # unless that card is an 8". The copy says any flip on your last play loses.
 # ---------------------------------------------------------------------------
-@pytest.mark.xfail(strict=True, reason="BUG: How to play says any finishing flip loses; the PDF exempts the 4s and (with an 8 on top) the 9s")
 def test_how_to_play_finish_copy_exempts_fours_and_nines_flips():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
     line = next(li for li in re.findall(r"<li>.*?</li>", html, re.S) if "last play would give you another turn" in li)
@@ -201,7 +195,6 @@ def test_how_to_play_finish_copy_exempts_fours_and_nines_flips():
 # indices have shifted: the survivor's view now pairs them with the leaver's
 # engine seat (wrong place and cards on the results screen).
 # ---------------------------------------------------------------------------
-@pytest.mark.xfail(strict=True, reason="BUG: refused rematch purges left seats but keeps the old engine, so views pair seats with the wrong engine players")
 def test_refused_rematch_does_not_desync_seats_from_the_finished_game():
     from ibflip_web.rooms import Room, RoomError
 

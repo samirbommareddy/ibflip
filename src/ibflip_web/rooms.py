@@ -274,8 +274,18 @@ class Room:
     chat: list[dict[str, Any]] = field(default_factory=list)
     last_remove: tuple[int, int, float] | None = None
     stats_game: stats.GameShape | None = None  # anonymous shape of the running game
+    # Per seat: when that human last made an accepted fixing move. Their idle
+    # clock runs from the later of this and the deal.
+    fix_activity: dict[int, float] = field(default_factory=dict)
 
     # ------------------------------------------------------------------ seats
+    def seat_of_conn(self, conn: Any) -> int | None:
+        """The seat a socket belongs to (bound from its token on connect)."""
+        for index, seat in enumerate(self.seats):
+            if any(c is conn for c in seat.sockets):
+                return index
+        return None
+
     def seat_by_token(self, token: str | None) -> int | None:
         if not token or not isinstance(token, str):
             return None
@@ -414,20 +424,22 @@ class Room:
 
     # ------------------------------------------------------------------- game
     def start(self) -> None:
-        self._purge_left_seats()
-        if len(self.seats) < 2:
+        # Validate before changing anything: a refused rematch must leave the
+        # finished game's seats (and so its results) exactly as they were.
+        if sum(1 for s in self.seats if not s.left) < 2:
             raise RoomError("Need at least two players")
+        self._purge_left_seats()
         self.engine = IBFlipEngine(len(self.seats))
         self.engine.reset()
         self.game_no += 1
         self.history = []
         self.agents = {i: make_agent(s.level) for i, s in enumerate(self.seats) if s.kind == "bot"}
-        for index, agent in self.agents.items():
-            agent.fix(self.engine, index)
-            self._ready_with_full_slots(index)
+        self.fix_activity = {}
         self.status = "fixing"
         self.turn_started = time.time()
         self._stats_game_started()
+        # Bots fix only after every human is ready (humans get first pick of
+        # the draw-pile); with no humans they fix straight away.
         self._after_fixing_check()
         self.touch()
 
@@ -465,8 +477,33 @@ class Room:
         except Exception:  # noqa: BLE001
             log.debug("stats hook failed", exc_info=True)
 
+    def _humans_ready(self) -> bool:
+        assert self.engine is not None
+        players = self.engine.state.players
+        return all(players[i].fixing_done for i, s in enumerate(self.seats) if s.kind == "human")
+
+    def _fix_bots(self) -> None:
+        """Fix and ready every bot. Runs once all humans are ready.
+
+        A bot whose fixing heuristic fails is readied with its arrangement as
+        dealt (repaired), so setup always ends.
+        """
+        engine = self._require_engine()
+        for index in sorted(self.agents):
+            if engine.state.phase is not Phase.FIXING_HANDS:
+                return
+            if engine.state.players[index].fixing_done:
+                continue
+            try:
+                self.agents[index].fix(engine, index)
+            except Exception:  # noqa: BLE001 - a bot bug must not stall setup
+                log.exception("room %s: bot %d fixing failed; readying as dealt", self.code, index)
+            self._ready_with_full_slots(index)
+
     def _after_fixing_check(self) -> None:
         assert self.engine is not None
+        if self.engine.state.phase is Phase.FIXING_HANDS and self._humans_ready():
+            self._fix_bots()
         if self.engine.state.phase is not Phase.FIXING_HANDS:
             self.status = "playing"
             self.turn_started = time.time()
@@ -476,14 +513,17 @@ class Room:
         if self.status != "fixing":
             raise IllegalActionError("Not fixing now")
         player = engine.state.players[seat]
-        if player.fixing_done and op != "undo_done":
-            raise IllegalActionError("Already ready")
-        if op == "swap":
-            engine.fix_swap_card(seat, int(card), int(slot))
-        elif op == "stack":
-            engine.fix_stack_card(seat, int(card), int(slot))
-        elif op == "unstack":
-            engine.fix_unstack_card(seat, int(slot))
+        if player.fixing_done:
+            raise IllegalActionError("Already ready")  # Ready is final (owner ruling)
+        if op in ("swap", "stack", "unstack"):
+            if op == "swap":
+                engine.fix_swap_card(seat, int(card), int(slot))
+            elif op == "stack":
+                engine.fix_stack_card(seat, int(card), int(slot))
+            else:
+                engine.fix_unstack_card(seat, int(slot))
+            # An accepted move restarts this seat's idle clock (only this seat's).
+            self.fix_activity[seat] = time.time()
         elif op == "done":
             engine.fix_done(seat)
             self._after_fixing_check()
@@ -648,7 +688,7 @@ class Room:
         if engine is None or self.status != "fixing":
             return {}
         return {
-            i: self._human_deadline(seat, self.turn_started)
+            i: self._human_deadline(seat, max(self.turn_started, self.fix_activity.get(i, 0.0)))
             for i, seat in enumerate(self.seats)
             if seat.kind == "human" and not engine.state.players[i].fixing_done
         }
@@ -658,7 +698,11 @@ class Room:
         engine = self.engine
         if engine is not None and self.status == "fixing":
             deadlines = self._fix_deadlines()
-            return min(deadlines.values()) if deadlines else None
+            if not deadlines:
+                # Every human is ready but setup has not ended (the bots still
+                # have to fix): finish it now rather than wait forever.
+                return time.time()
+            return min(deadlines.values())
         if engine is None or self.status != "playing":
             return None
         if engine.state.phase is Phase.GAME_OVER:
@@ -685,8 +729,8 @@ class Room:
         if self.status == "fixing":
             for i, deadline in self._fix_deadlines().items():
                 if now >= deadline - 0.01:
+                    # Keep the human's arrangement; only refill empty slots.
                     self._note_autopilot(i)
-                    heuristic_fix(engine, i)
                     self._ready_with_full_slots(i)
             self._after_fixing_check()
             self.touched = time.time()

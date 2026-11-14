@@ -8,6 +8,12 @@ are gone, plus face-down play where it meets special cards. Authority is
 reason starts with `BUG:`. The other tests in that file pass and record what
 was checked.
 
+Status (14 November 2026, branch `local/fix-bughunt-engine`): the owner ruled
+that a promoted 4 acts as a played 4; the 4 rule is now derived from the live
+pile and both tests pass (the fuzz no longer excludes these states). The
+questions below were ruled to keep current behaviour. See
+`docs/rules-audit.md` ("Owner rulings (14 November 2026)").
+
 ## Findings
 
 | Severity | Finding | Test |

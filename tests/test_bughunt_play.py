@@ -55,12 +55,6 @@ def nine_flip_engine(promoted: int, flipper_hand: list[int], others: list[list[i
 # ---------------------------------------------------------------- bugs
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="BUG: a 6 played on a 4 promoted by a 9s flip does not start the 4 rule; "
-    "the next player may play any card that goes on a regular 6",
-)
 def test_six_on_a_four_promoted_by_a_nine_flip_makes_the_next_player_play_on_a_four():
     # PDF, 6: "If a 6 is played on a 4, the next player must play on a 4, as
     # outlined above." 4: "the next player must pick up the live cards ...
@@ -75,16 +69,11 @@ def test_six_on_a_four_promoted_by_a_nine_flip_makes_the_next_player_play_on_a_f
     engine.step(six)
     engine.step(ACTION_END_PLAY_GROUP)
     assert engine.state.current_player == 1
-    # A 7 and a J are not a 4, 5 or 6: player 1 must pick up. The engine
-    # currently offers both (7 and J go on a regular 6).
+    # A 7 and a J are not a 4, 5 or 6: player 1 must pick up (owner ruling,
+    # 14 November 2026: a promoted 4 acts as a played 4).
     assert engine.get_legal_action_indices() == [ACTION_PICK_UP_LIVE_PILE]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="BUG: a 6 on a 5 on a 4 promoted by a 9s flip does not start the 4 rule either",
-)
 def test_six_on_five_on_a_promoted_four_keeps_the_four_rule():
     five, six = c(Rank.FIVE, Suit.SPADES), c(Rank.SIX, Suit.DIAMONDS)
     engine = nine_flip_engine(
@@ -103,6 +92,55 @@ def test_six_on_five_on_a_promoted_four_keeps_the_four_rule():
     assert engine.get_legal_action_indices() == [ACTION_PICK_UP_LIVE_PILE]
 
 
+def test_promoted_four_and_six_in_either_order_start_the_four_rule():
+    """Ruling (14 November 2026) generalised: the 4 rule follows the live pile.
+    A promoted pile of a 4 and a 6 has a 4 on top, or a 6 on a 4: either way
+    the flipper must play a 4, 5 or 6 or pick up."""
+    nines = [c(Rank.NINE, s) for s in Suit]
+    for seed in range(6):
+        engine = IBFlipEngine(2, seed=seed)
+        engine.set_state(GameState(
+            players=[Player(hand=[nines[3], c(Rank.SEVEN, Suit.SPADES), c(Rank.JACK, Suit.SPADES)]),
+                     Player(hand=[c(Rank.KING, Suit.DIAMONDS)])],
+            phase=Phase.MIDDLE_GAME,
+            live_cards=nines[:3],
+            discard_pile=[c(Rank.FOUR, Suit.CLUBS), c(Rank.SIX, Suit.CLUBS)],
+        ))
+        engine.step(nines[3])
+        engine.step(ACTION_END_PLAY_GROUP)
+        assert sorted(engine.state.live_cards) == sorted([c(Rank.FOUR, Suit.CLUBS), c(Rank.SIX, Suit.CLUBS)])
+        assert engine.state.current_player == 0
+        assert engine.state.pending is not None and engine.state.pending.kind is PendingKind.FOUR_LOOP
+        assert engine.get_legal_action_indices() == [ACTION_PICK_UP_LIVE_PILE]
+
+
+def test_a_players_own_open_group_of_fours_is_not_flagged_as_a_four_loop():
+    four, four2 = c(Rank.FOUR, Suit.HEARTS), c(Rank.FOUR, Suit.SPADES)
+    engine = engine_for(
+        [Player(hand=[four, four2, c(Rank.KING, Suit.SPADES)]), Player(hand=[c(Rank.SIX, Suit.SPADES), c(Rank.JACK, Suit.SPADES)])],
+        live_cards=[c(Rank.KING, Suit.HEARTS)],
+    )
+    engine.step(four)
+    assert engine.state.pending is None  # still the mover's group
+    assert engine.get_legal_action_indices() == [four2, ACTION_END_PLAY_GROUP]
+    engine.step(ACTION_END_PLAY_GROUP)
+    assert engine.state.pending.kind is PendingKind.FOUR_LOOP
+    assert engine.get_legal_action_indices() == [c(Rank.SIX, Suit.SPADES)]
+
+
+def test_a_four_chain_ends_with_the_pickup():
+    engine = engine_for(
+        [Player(hand=[c(Rank.FOUR, Suit.HEARTS), c(Rank.KING, Suit.SPADES)]),
+         Player(hand=[c(Rank.JACK, Suit.SPADES), c(Rank.SEVEN, Suit.SPADES)])],
+        live_cards=[c(Rank.KING, Suit.HEARTS)],
+    )
+    engine.step(c(Rank.FOUR, Suit.HEARTS))
+    engine.step(ACTION_END_PLAY_GROUP)
+    assert engine.get_legal_action_indices() == [ACTION_PICK_UP_LIVE_PILE]
+    engine.step(ACTION_PICK_UP_LIVE_PILE)
+    assert engine.state.pending is None and engine.state.live_cards == []
+
+
 # ------------------------------------------- checked and found correct
 
 
@@ -115,7 +153,8 @@ def test_nine_flip_promoted_single_card(rank):
     engine = nine_flip_engine(promoted, flipper_hand=probe, others=[[c(Rank.JACK, Suit.DIAMONDS)]])
     state = engine.state
     assert state.direction == 1
-    assert state.pending is None
+    # A promoted 4 acts as a played 4 (owner ruling, 14 November 2026).
+    assert (state.pending is not None and state.pending.kind is PendingKind.FOUR_LOOP) == (rank is Rank.FOUR)
     if rank is Rank.EIGHT:
         assert state.current_player == 1
         return
@@ -381,6 +420,12 @@ def _oracle_legal(state, cards):
     engine's reading of owner question 1 (a 6 on a 6 keeps a 4 chain) and
     reads the ace-as-one, five-on-zero and start-card fields from the state."""
     if state.required_start_card_id is not None:
+        # From a face-up stack (empty hand) any card of the stack holding the
+        # start card counts: they share its rank and only the top is clickable.
+        me = state.players[state.current_player]
+        slot = next((sl for sl in me.face_up_slots if state.required_start_card_id in sl), None)
+        if not me.hand and slot is not None:
+            return set(slot)
         return {state.required_start_card_id}
     i = _eff_index(state, state.live_cards)
     target = None if i is None or state.live_cards[i] in state.ace_as_one_card_ids else RANK_BY_ID[state.live_cards[i]]
@@ -452,11 +497,10 @@ def test_fuzz_turn_play_invariants(n):
                 zone = hand or fu
                 assert cards_in_legal <= set(zone)
                 if zone:
-                    # A promoted 4 never carries the 4 rule in the engine: the
-                    # known bug, see the xfail tests above.
-                    promoted_four_bug = _four_rule(s, s.live_cards) and s.pending is None
-                    if not promoted_four_bug:
-                        assert cards_in_legal == _oracle_legal(s, zone), (n, seed)
+                    assert cards_in_legal == _oracle_legal(s, zone), (n, seed)
+                    # The observer flag mirrors the pile-derived 4 rule.
+                    flag = s.pending is not None and s.pending.kind is PendingKind.FOUR_LOOP
+                    assert flag == _four_rule(s, s.live_cards), (n, seed)
                 if not hand and not fu:
                     assert all(a in FACE_DOWN_ACTIONS for a in legal)
                     assert {FACE_DOWN_ACTIONS[a] for a in legal} == {
