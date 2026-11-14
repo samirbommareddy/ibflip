@@ -55,7 +55,10 @@ uv run python scripts/stress_test.py --games 20000   # random-play fuzzing
 
 See [the rules and lifecycle audit](docs/rules-audit.md) for the rule authority,
 verified fixes, regression coverage, and training limitations. Confirmed plays
-are final. Matching face-up cards can be combined across slots during fixing.
+are final. Matching face-up cards can be combined across slots during fixing,
+but every face-up slot must hold a card before a player is ready: a slot
+emptied by combining is refilled from the hand (then the hand draws back to
+three) or by splitting the stack back.
 The shipped Shark was trained before the rules were corrected. It plays the
 current engine through a slot adapter. It was re-measured on the current rules in
 November 2026: alone against Regular bots it wins 77 % at 2p and 33 % at 4p (fair

@@ -664,7 +664,10 @@ function renderStatus() {
       text = waiting.length ? `Waiting for ${waiting.map(esc).join(", ")}…` : "Dealing…";
     } else {
       yours = true;
-      text = S.selected === null
+      const emptySlot = me.face_up.some((sl) => !sl.length);
+      text = emptySlot
+        ? (S.selected === null ? "Fill the empty face-up slot before you are ready. Tap a hand card, then the empty slot." : "Now tap the empty slot to fill it.")
+        : S.selected === null
         ? "Tap a hand card to swap, or a face-up card to combine matching ranks."
         : `Now tap a face-up card to ${me.face_up.some((sl) => sl.length && rankIx(sl[sl.length - 1]) === rankIx(S.selected)) ? "swap — or a matching one to stack" : "swap"}`;
     }
@@ -722,7 +725,14 @@ function renderMe() {
       c.classList.toggle("legal", top && legalCards.has(id) && g.source === "face_up" && (lockSlot === null || lockSlot === undefined || lockSlot === k));
     });
     const down = $(".card.down", slotEl);
-    if (down) down.classList.toggle("legal", (L.face_down || []).includes(k));
+    if (down) {
+      down.classList.toggle("legal", (L.face_down || []).includes(k));
+      // A face-up slot emptied by combining must be refilled before Ready.
+      const needsCard = fixing && !ups.length;
+      down.classList.toggle("needs-card", needsCard);
+      down.classList.toggle("fixable", needsCard);
+      down.classList.toggle("target", needsCard && S.selected !== null);
+    }
   });
 
   renderHand(g, me, { mine, fixing, legalCards });
@@ -738,6 +748,8 @@ function renderMe() {
   setHTML($("#actionBar"), buttons.map(([label, cls, a]) => `<button class="btn ${cls}" data-act="${a}">${label}</button>`).join(""));
   // Buttons are reused across renders; a fresh state always re-enables them.
   $$("#actionBar button").forEach((b) => (b.disabled = false));
+  const ready = $('#actionBar button[data-act="ready"]');
+  if (ready && me.face_up.some((sl) => !sl.length)) ready.disabled = true;
 }
 
 function handLayout(hand, n) {
@@ -857,11 +869,21 @@ function fixSlot(k) {
   if (S.selected === null) {
     if (slot.length > 1 && me.hand_count < 3 && S.game.draw_count === 0) send({ type: "fix", op: "unstack", slot: k });
     else if (slot.length) { S.selected = slot[slot.length - 1]; renderGame(); }
+    else toast("Pick a hand card to fill this slot.");
     return;
   }
   const top = slot[slot.length - 1];
   if (slot.includes(S.selected)) { S.selected = null; renderGame(); return; }
   const fromHand = S.game.hand.includes(S.selected);
+  if (!fromHand && top === undefined) {
+    // Only a card split off a stack may refill an empty slot.
+    if ((me.face_up.find((sl) => sl.includes(S.selected)) || []).length > 1) {
+      send({ type: "fix", op: "stack", card: S.selected, slot: k });
+      S.selected = null;
+      Sound.snap();
+    } else toast("Pick a hand card to fill this slot.");
+    return;
+  }
   if (!fromHand && (top === undefined || rankIx(top) !== rankIx(S.selected))) {
     toast("Choose a matching face-up card to stack.");
     return;

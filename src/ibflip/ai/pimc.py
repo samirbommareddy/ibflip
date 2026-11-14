@@ -168,6 +168,7 @@ def search_fix(engine: IBFlipEngine, player_index: int, policy: MLPPolicy, world
                     heuristic_fix(sim, j)
             for j in range(n):
                 if not sim.state.players[j].fixing_done:
+                    sim.fix_fill_empty_slots(j)
                     sim.fix_done(j)
             r = random.Random(seed)
             totals[i] += score(policy_playout(sim, policy, r, np.random.default_rng(int(seed * 2**31))), player_index, n)

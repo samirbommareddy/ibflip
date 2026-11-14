@@ -16,8 +16,16 @@ rulings captured in `tests/test_placements_and_rulings.py` and these explicit
 owner decisions from this audit:
 
 - Confirmed plays are final; the PDF's take-back rule does not apply.
-- Matching face-up cards may be combined across slots while fixing, leaving an
-  empty slot. Moving a visible card between slots does not draw a hand card.
+- Matching face-up cards may be combined across slots while fixing. Moving a
+  visible card between slots does not draw a hand card. Corrected 14 November
+  2026 (owner ruling: "All 3 must be filled"): combining may empty a slot only
+  temporarily. A player cannot be ready, by hand or automatically, until every
+  face-up slot holds at least one card. An empty slot is refilled by placing a
+  hand card there (the hand then draws back to three, as after stacking; with
+  an empty draw-pile the hand stays short) or by moving a card from a face-up
+  stack of two or more into it. Automatic readiness (timeouts, disconnects,
+  bots) splits a card back off the largest stack. See "Face-up slot
+  correction" below.
 - Existing rulings remain: blocked early-game players may pick up or reveal;
   pickup is forbidden when a legal card is available, including a 4 chain;
   several 9s in one group draw one random discard card; multiplayer games run
@@ -35,7 +43,7 @@ compute, training, publication, or deployment was performed.
 | --- | --- |
 | Finishing the hand could let a same-rank face-up card join that hand's group. | Groups stay in their original source; face-up groups stay in one slot. Regression exercises the boundary. |
 | Simultaneous fixing swapped an entire stack into the hand; sequential fixing swapped just its top and could create mixed-rank stacks. | Shared implementation enforces one-for-one swaps and homogeneous stacks. A different-rank swap onto an existing stack is rejected before mutation. |
-| Face-up cards could not be combined across slots. | Both fixing APIs accept visible source cards. Client selects a face-up card, then a matching destination. Source can become empty. |
+| Face-up cards could not be combined across slots. | Both fixing APIs accept visible source cards. Client selects a face-up card, then a matching destination. Source can become empty, but must be refilled before ready (corrected 14 November 2026, see below). |
 | Newly selectable fixing cards could have no valid destination. | Selection masks only offer cards with a valid swap/stack destination. Random fixing exercises transitions. |
 | Engine fixing API allowed a ready player to alter cards. | Ready-player and player-index validation happens before mutation. |
 | Six or more players crashed while dealing the 52-card deck. | Engine rejects unsupported sizes; supported range is 2–5. |
@@ -119,6 +127,33 @@ same-rank stacks to start. Observations include opponents' active flags but do
 not expose their place or stack partition. These are representation limitations,
 not permission to play an illegal card; action masks still enforce the engine.
 Fixing is heuristic and does not learn the newly allowed face-up combinations.
+
+## Face-up slot correction (14 November 2026)
+
+Bug: the combine added by this audit left the source slot empty with no
+mandatory refill, and a swap could not target an empty slot, so humans and
+`heuristic_fix` bots (Regular, Shark) could start a game with only a bare
+face-down card in a slot. The PDF's Fixing Hand section describes trading
+"one-for-one" and stacking onto "one of the three face-up slots" followed by
+drawing back to three; it never describes an empty slot, and the owner ruled
+that all three face-up slots must be filled.
+
+- Engine: `fix_done`, `ACTION_FIX_DONE` and its legal mask refuse readiness
+  while a slot is empty. `fix_swap_card` onto an empty slot places the hand
+  card and draws to three. `fix_stack_card` onto an empty slot accepts only a
+  card from a face-up stack of two or more. `fix_fill_empty_slots` repairs an
+  arrangement without drawing; `auto_fix_hands_randomly` uses it.
+- Server: bot readiness, idle/disconnect autopilot and the crash fallback all
+  repair before readying, so a room can never stall on a refused ready.
+- Bots: `heuristic_fix` refills a slot emptied by combining with its best
+  hand card and finishes with the engine repair.
+- Client: an empty slot's face-down card is outlined and clickable, Ready is
+  disabled and the prompt asks for the slot to be filled.
+- Final arrangements reachable are unchanged in kind: combine, place, draw is
+  the same result as swap plus stacking from hand. No other rule changed.
+- `scripts/stress_test.py` now drives random real fixing actions (it
+  previously skipped fixing) and fails if any seat starts with an empty slot.
+  Regression tests: `tests/test_face_up_slots_filled.py`.
 
 Training/evaluation cutoffs also need care: PPO assigns its configured timeout
 penalty to every learner trajectory, including players already placed; arena

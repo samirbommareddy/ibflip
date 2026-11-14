@@ -108,8 +108,24 @@ def _pick_card(engine: IBFlipEngine, mapping: dict[int, list[int]], compact: int
 
 
 def heuristic_fix(engine: IBFlipEngine, player_index: int) -> None:
-    """Put strong cards face up, then consolidate matching visible/hand cards."""
+    """Put strong cards face up, then consolidate matching visible/hand cards.
+
+    Every face-up slot is left non-empty: a slot emptied by combining is
+    refilled with the best hand card (the hand then draws back to three).
+    """
     player = engine.state.players[player_index]
+
+    def refill_from_hand(slot_index: int) -> bool:
+        if not player.hand:
+            return False
+        best = max(player.hand, key=lambda c: KEEP_BY_INDEX[RANK_INDEX_BY_ID[c]])
+        engine.fix_swap_card(player_index, best, slot_index)
+        return True
+
+    # A human may time out after emptying a slot themselves.
+    for slot_index, slot in enumerate(player.face_up_slots):
+        if not slot:
+            refill_from_hand(slot_index)
     for _ in range(6):
         if not player.hand:
             break
@@ -135,6 +151,8 @@ def heuristic_fix(engine: IBFlipEngine, player_index: int) -> None:
             if target is None:
                 break
             engine.fix_stack_card(player_index, card, target)
+            if not player.face_up_slots[source] and not refill_from_hand(source):
+                break
     for _ in range(52):  # each move exposes a new card or exhausts the hand
         matching = next(((card, i) for card in player.hand
                          for i, slot in enumerate(player.face_up_slots)
@@ -142,6 +160,8 @@ def heuristic_fix(engine: IBFlipEngine, player_index: int) -> None:
         if matching is None:
             break
         engine.fix_stack_card(player_index, *matching)
+    if not all(player.face_up_slots):
+        engine.fix_fill_empty_slots(player_index)
 
 
 class RandomAgent:

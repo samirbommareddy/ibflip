@@ -20,7 +20,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from ibflip import IBFlipEngine  # noqa: E402
-from ibflip.actions import ACTION_END_PLAY_GROUP  # noqa: E402
+from ibflip.actions import ACTION_END_PLAY_GROUP, ACTION_FIX_DONE  # noqa: E402
 from ibflip.state import Phase  # noqa: E402
 
 
@@ -60,6 +60,33 @@ def dump_state(engine: IBFlipEngine, game_index: int, turn_count: int) -> str:
         width=120,
         sort_dicts=False,
     )
+
+
+MAX_FIXING_STEPS = 2_000
+
+
+def random_fixing(engine: IBFlipEngine, rng: random.Random, game_index: int) -> None:
+    """Drive the real fixing actions at random, then check every face-up slot is filled."""
+    for _ in range(MAX_FIXING_STEPS):
+        if engine.state.phase is not Phase.FIXING_HANDS:
+            break
+        legal = engine.get_legal_action_indices()
+        if not legal:
+            print(dump_state(engine, game_index, 0), file=sys.stderr)
+            raise FatalDeadlockError(f"no legal fixing actions in game {game_index}")
+        others = [action for action in legal if action != ACTION_FIX_DONE]
+        if ACTION_FIX_DONE in legal and (not others or rng.random() < 0.15):
+            action = ACTION_FIX_DONE
+        else:
+            action = rng.choice(others)
+        engine.step(action)
+    else:
+        print(dump_state(engine, game_index, 0), file=sys.stderr)
+        raise InfiniteLoopError(f"fixing did not finish in game {game_index}")
+    for seat, player in enumerate(engine.state.players):
+        if not all(player.face_up_slots):
+            print(dump_state(engine, game_index, 0), file=sys.stderr)
+            raise FatalDeadlockError(f"seat {seat} finished fixing with an empty face-up slot in game {game_index}")
 
 
 def memory_sample(label: str) -> tuple[str, int, int]:
@@ -159,7 +186,7 @@ def run_stress_slice(
 
         engine = IBFlipEngine(num_players=num_players, seed=rng.randrange(2**63))
         engine.reset()
-        engine.auto_fix_hands_randomly()
+        random_fixing(engine, rng, game_index)
 
         turn_count = 0
         while engine.state.phase is not Phase.GAME_OVER:

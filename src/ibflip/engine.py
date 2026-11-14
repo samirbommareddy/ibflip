@@ -42,6 +42,14 @@ class IllegalActionError(ValueError):
     pass
 
 
+EMPTY_SLOT_MESSAGE = "Fill every face-up slot before you are ready"
+
+
+def face_up_slots_complete(player: Player) -> bool:
+    """True when each of the player's face-up slots holds at least one card."""
+    return all(player.face_up_slots)
+
+
 class IBFlipEngine:
     action_space_size = ACTION_SPACE_SIZE
 
@@ -193,7 +201,9 @@ class IBFlipEngine:
     def auto_fix_hands_randomly(self) -> None:
         if self.state.phase is not Phase.FIXING_HANDS:
             return
-        for player in self.state.players:
+        for index, player in enumerate(self.state.players):
+            if not player.fixing_done and not face_up_slots_complete(player):
+                self.fix_fill_empty_slots(index)
             player.fixing_done = True
         self.state.fix_selected_card_id = None
         self._start_game_after_fixing()
@@ -203,10 +213,22 @@ class IBFlipEngine:
     # player fixes their own hand at the same time).
     # ------------------------------------------------------------------
     def fix_swap_card(self, player_index: int, card: int, slot_index: int) -> None:
+        """Trade a hand card one-for-one with a face-up card.
+
+        Onto a slot emptied by combining, the hand card is simply placed and
+        the hand is refilled to three from the draw-pile, as after stacking.
+        """
         player = self._fixing_player(player_index)
-        if card not in player.hand or not (0 <= slot_index < len(player.face_up_slots)) or not player.face_up_slots[slot_index]:
+        if card not in player.hand or not (0 <= slot_index < len(player.face_up_slots)):
             raise IllegalActionError("illegal swap")
         slot = player.face_up_slots[slot_index]
+        if not slot:
+            player.hand.remove(card)
+            if card in player.known_hand:
+                player.known_hand.remove(card)
+            slot.append(card)
+            self._draw_to_three(player)
+            return
         if len(slot) > 1 and self.rank(slot[-1]) is not self.rank(card):
             raise IllegalActionError("swap would mix ranks in a stack")
         player.hand.remove(card)
@@ -222,14 +244,20 @@ class IBFlipEngine:
         if not (0 <= slot_index < len(player.face_up_slots)):
             raise IllegalActionError("illegal stack")
         slot = player.face_up_slots[slot_index]
-        if not slot or self.rank(slot[-1]) is not self.rank(card):
-            raise IllegalActionError("can only stack matching ranks")
         from_hand = card in player.hand
         source = player.hand if from_hand else next(
             (other for i, other in enumerate(player.face_up_slots) if i != slot_index and card in other), None
         )
         if source is None:
             raise IllegalActionError("card is not in hand or another face-up slot")
+        if not slot:
+            # Refill a slot emptied by combining with a card split off a
+            # face-up stack; that must not empty yet another slot. Hand cards
+            # go into an empty slot through ``fix_swap_card``.
+            if from_hand or len(source) < 2:
+                raise IllegalActionError("can only move a card from a stack into an empty slot")
+        elif self.rank(slot[-1]) is not self.rank(card):
+            raise IllegalActionError("can only stack matching ranks")
         source.remove(card)
         if card in player.known_hand:
             player.known_hand.remove(card)
@@ -248,8 +276,14 @@ class IBFlipEngine:
         player.known_hand.append(card)
 
     def fix_done(self, player_index: int) -> bool:
-        """Mark a player as ready. Returns True when the game has started."""
+        """Mark a player as ready. Returns True when the game has started.
+
+        Every face-up slot must hold at least one card: combining matching
+        face-up cards may empty a slot, but it must be refilled first.
+        """
         player = self._fixing_player(player_index)
+        if not face_up_slots_complete(player):
+            raise IllegalActionError(EMPTY_SLOT_MESSAGE)
         player.fixing_done = True
         if all(p.fixing_done for p in self.state.players):
             self.state.fix_selected_card_id = None
@@ -257,6 +291,28 @@ class IBFlipEngine:
             self._update_phase()
             return True
         return False
+
+    def fix_fill_empty_slots(self, player_index: int) -> None:
+        """Refill any empty face-up slot so the player can be marked ready.
+
+        Used by automatic readiness (timeouts, disconnects, bots). A card is
+        split back off the largest face-up stack, which undoes a combine
+        without revealing or drawing anything. While fixing, a player holds at
+        least six cards and at most three in hand, so a stack always exists;
+        the hand is only a defensive fallback.
+        """
+        player = self._fixing_player(player_index)
+        for slot_index, slot in enumerate(player.face_up_slots):
+            if slot:
+                continue
+            donor = max(player.face_up_slots, key=len)
+            if len(donor) >= 2:
+                slot.append(donor.pop())
+            elif player.hand:
+                card = max(player.hand, key=lambda c: (STARTING_LOWEST_ORDER[self.rank(c)], int(SUIT_BY_ID[c])))
+                self.fix_swap_card(player_index, card, slot_index)
+        if not face_up_slots_complete(player):
+            raise IllegalActionError(EMPTY_SLOT_MESSAGE)
 
     def _fixing_player(self, player_index: int) -> Player:
         if self.state.phase is not Phase.FIXING_HANDS:
@@ -284,15 +340,18 @@ class IBFlipEngine:
             # Offer only selections with a valid destination; selecting an
             # isolated face-up card or a hand card blocked by stacks must not
             # trap the fixing state with no next action.
-            legal.extend(card for card in player.hand if any(
+            has_empty = not face_up_slots_complete(player)
+            legal.extend(card for card in player.hand if has_empty or any(
                 slot and (len(slot) == 1 or self.rank(slot[-1]) is self.rank(card))
                 for slot in player.face_up_slots
             ))
             legal.extend(card for source in player.face_up_slots for card in source if any(
-                slot and card not in slot and self.rank(slot[-1]) is self.rank(card)
+                (slot and card not in slot and self.rank(slot[-1]) is self.rank(card))
+                or (not slot and len(source) >= 2)
                 for slot in player.face_up_slots
             ))
-            legal.append(ACTION_FIX_DONE)
+            if not has_empty:
+                legal.append(ACTION_FIX_DONE)
             if len(player.hand) < 3 and not self.state.draw_pile:
                 for action, slot_index in FIX_TAKE_FROM_STACK_ACTIONS.items():
                     if slot_index < len(player.face_up_slots) and len(player.face_up_slots[slot_index]) > 1:
@@ -303,13 +362,16 @@ class IBFlipEngine:
         for action, slot_index in FIX_SWAP_ACTIONS.items():
             if selected in player.hand and slot_index < len(player.face_up_slots):
                 slot = player.face_up_slots[slot_index]
-                if slot and (len(slot) == 1 or self.rank(slot[-1]) is self.rank(selected)):
+                if not slot or len(slot) == 1 or self.rank(slot[-1]) is self.rank(selected):
                     legal.append(action)
         selected_rank = self.rank(selected)
+        source = next((slot for slot in player.face_up_slots if selected in slot), None)
         for action, slot_index in FIX_STACK_ACTIONS.items():
             if slot_index < len(player.face_up_slots):
                 slot = player.face_up_slots[slot_index]
                 if slot and selected not in slot and self.rank(slot[-1]) is selected_rank:
+                    legal.append(action)
+                elif not slot and source is not None and len(source) >= 2:
                     legal.append(action)
         return legal
 
@@ -330,6 +392,8 @@ class IBFlipEngine:
         if action == ACTION_FIX_KEEP_UNDERSIZED_HAND:
             return
         if action == ACTION_FIX_DONE:
+            if not face_up_slots_complete(player):
+                raise IllegalActionError(EMPTY_SLOT_MESSAGE)
             player.fixing_done = True
             self.state.fix_selected_card_id = None
             if all(next_player.fixing_done for next_player in self.state.players):

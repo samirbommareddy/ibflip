@@ -422,11 +422,22 @@ class Room:
         self.agents = {i: make_agent(s.level) for i, s in enumerate(self.seats) if s.kind == "bot"}
         for index, agent in self.agents.items():
             agent.fix(self.engine, index)
-            self.engine.fix_done(index)
+            self._ready_with_full_slots(index)
         self.status = "fixing"
         self.turn_started = time.time()
         self._after_fixing_check()
         self.touch()
+
+    def _ready_with_full_slots(self, index: int) -> None:
+        """Mark a seat ready on its behalf, refilling any empty face-up slot.
+
+        Automatic readiness must never be refused for an empty slot (that
+        would stall the room), so the arrangement is repaired first.
+        """
+        assert self.engine is not None
+        if not all(self.engine.state.players[index].face_up_slots):
+            self.engine.fix_fill_empty_slots(index)
+        self.engine.fix_done(index)
 
     def _after_fixing_check(self) -> None:
         assert self.engine is not None
@@ -648,7 +659,7 @@ class Room:
                 if now >= deadline - 0.01:
                     self._note_autopilot(i)
                     heuristic_fix(engine, i)
-                    engine.fix_done(i)
+                    self._ready_with_full_slots(i)
             self._after_fixing_check()
             self.touched = time.time()
             return
@@ -678,7 +689,7 @@ class Room:
                 now = time.time()
                 for i, deadline in self._fix_deadlines().items():
                     if now >= deadline - 0.01:
-                        engine.fix_done(i)
+                        self._ready_with_full_slots(i)
                 self._after_fixing_check()
             elif self.status == "playing" and engine.state.phase is not Phase.GAME_OVER:
                 legal = engine.get_legal_action_indices()

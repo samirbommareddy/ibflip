@@ -34,8 +34,10 @@ initializes the three new output heads at zero. It does not pretend to preserve
 the old policy's behavior on new slot decisions.
 
 Fixing remains heuristic: choose strong visible cards, consolidate equal ranks
-across visible slots, then stack matching hand cards and refill according to the
-engine. Runtime and training share this implementation, so stacks actually
+across visible slots (refilling any slot this empties with the best hand card,
+since every face-up slot must hold a card before ready), then stack matching
+hand cards and refill according to the engine. Validation runs recorded before
+14 November 2026 used the earlier fixing, which could leave a slot empty. Runtime and training share this implementation, so stacks actually
 occur in self-play. Learned fixing and search imitation remain separate future
 experiments, not prerequisites for a valid rules-correct PPO run.
 
