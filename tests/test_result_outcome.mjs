@@ -1,10 +1,11 @@
 // node --test tests/test_result_outcome.mjs
 // Results screen (static/app.js resultOutcome / showResult): the title, the
 // line under it, the sound and confetti must agree, for 2 to 5 players and
-// every way a game can end. Finished games are built the way the engine
-// places players: legal finishers take 1st, 2nd... in order, illegal
-// finishers fill the bottom (the first one lowest), 8s flippers go below
-// everyone, and the one player left takes the remaining place.
+// every way a game can end. Finished games are placed the way the engine
+// does it (engine.py _finish_player): legal finishers take the top free
+// place, illegal finishers the bottom free place, an 8s flipper takes last
+// place and earlier illegal/8s finishers move up one; once one player is
+// left, they get the remaining place.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { test } from "node:test";
@@ -12,8 +13,7 @@ import { test } from "node:test";
 const require = createRequire(import.meta.url);
 const { loadClient } = require("./client_harness.cjs");
 
-// Every finishing order: each player except the last one left ends "legal",
-// "illegal" or "eights" (at most one 8s flip, which ends the game at once).
+// Every finishing order, each finisher "legal", "illegal" or "eights".
 function* endings(n) {
   const seats = [...Array(n).keys()];
   function* orders(left) {
@@ -24,24 +24,26 @@ function* endings(n) {
     const finishers = order.slice(0, n - 1);
     for (let mask = 0; mask < 3 ** finishers.length; mask++) {
       const kinds = finishers.map((_, k) => ["legal", "illegal", "eights"][Math.floor(mask / 3 ** k) % 3]);
-      const e = kinds.indexOf("eights");
-      if (e !== -1 && e !== kinds.length - 1) continue; // an 8s flip ends the game
       yield place(n, finishers, kinds);
     }
   }
 }
 function place(n, finishers, kinds) {
   const players = Array.from({ length: n }, () => ({ place: null, finish: null, face_up: [[], [], []], hand: [] }));
-  let top = 1, bottom = n;
+  const free = () => { const taken = new Set(players.map((p) => p.place)); return [...Array(n).keys()].map((k) => k + 1).filter((k) => !taken.has(k)); };
   finishers.forEach((i, k) => {
-    players[i].finish = kinds[k];
-    if (kinds[k] === "legal") players[i].place = top++;
+    const f = kinds[k];
+    players[i].finish = f;
+    if (f === "legal") players[i].place = free()[0];
+    else if (f === "illegal") players[i].place = free().at(-1);
+    else {
+      for (const p of players) if (p.place !== null && (p.finish === "illegal" || p.finish === "eights")) p.place -= 1;
+      players[i].place = n;
+    }
   });
-  // 8s flipper last, then illegal finishers above it, first illegal lowest.
-  finishers.forEach((i, k) => { if (kinds[k] === "eights") players[i].place = bottom--; });
-  finishers.forEach((i, k) => { if (kinds[k] === "illegal") players[i].place = bottom--; });
   const left = players.findIndex((p) => p.place === null);
-  players[left].place = top;
+  players[left].place = free()[0];
+  assert.deepEqual(players.map((p) => p.place).sort((x, y) => x - y), [...Array(n).keys()].map((k) => k + 1));
   const winner = players.findIndex((p) => p.place === 1), loser = players.findIndex((p) => p.place === n);
   return { status: "over", winner, loser, players };
 }
@@ -80,7 +82,7 @@ test("results: title, text, sound and confetti agree for every finish at 2 to 5 
       }
     }
   }
-  assert.ok(cases > 500, `only ${cases} cases`);
+  assert.ok(cases > 1000, `only ${cases} cases`);
 });
 
 test("results: the last player left after illegal finishers gets a plain, correct line", () => {

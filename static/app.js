@@ -396,6 +396,9 @@ function act(action) {
   if (!isLegalNow(action)) return;
   S.pendingAction = true;
   S.pendingAt = Date.now();
+  // This state has been answered: auto actions (Done, Pick up, the next
+  // card of a chain) never fire for it again, even after the pending timeout.
+  S.autoSentSig = S.lastSig;
   Sound.unlock();
   send({ type: "action", action });
   // Safety net: never leave the table unclickable if a reply goes missing.

@@ -235,6 +235,16 @@ test("a chain card is not sent twice after the 8 s pending timeout and a same-st
   assert.deepEqual(actions(), [32, 33]);
 });
 
+test("a manual Done, then the 8 s timeout and a same-state broadcast: no second, automatic Done", async () => {
+  await deliver(doneOnly());
+  await advance(200);
+  c.T.act(A_END); // the player taps Done before auto-Done fires
+  await advance(8200);
+  await deliver(doneOnly());
+  await advance(1500);
+  assert.deepEqual(actions(), [A_END]);
+});
+
 test("left-over chain state for another rank never blocks auto-Done", async () => {
   c.T.S.autoGroup = { rank: 3, queue: [12] }; // stale: a Q chain from earlier
   await deliver(doneOnly());
