@@ -53,6 +53,8 @@ GC_INTERVAL_SECONDS = 60
 AUTOPILOT_AFTER_SECONDS = 45
 # A connected human who simply doesn't move gets autopiloted after this long.
 IDLE_TURN_TIMEOUT_SECONDS = 90
+# Setup ends even if a human keeps rearranging cards.
+SETUP_TIMEOUT_SECONDS = 3 * 60
 # A human who explicitly left a running game is played for almost at once.
 LEFT_AUTOPILOT_SECONDS = 1.0
 # If the host has been disconnected this long, the next connected human hosts.
@@ -688,7 +690,10 @@ class Room:
         if engine is None or self.status != "fixing":
             return {}
         return {
-            i: self._human_deadline(seat, max(self.turn_started, self.fix_activity.get(i, 0.0)))
+            i: min(
+                self._human_deadline(seat, max(self.turn_started, self.fix_activity.get(i, 0.0))),
+                self.turn_started + SETUP_TIMEOUT_SECONDS,
+            )
             for i, seat in enumerate(self.seats)
             if seat.kind == "human" and not engine.state.players[i].fixing_done
         }

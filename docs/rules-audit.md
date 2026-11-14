@@ -238,8 +238,8 @@ Fixes from the same hunts:
 - Setup idle clock: an accepted fixing move (swap, stack, unstack) restarts
   that seat's idle deadline only (`Room.fix_activity`); refused moves do not.
   Other seats keep their own clocks, so one active player cannot hold idle
-  players' autopilot back. There is no overall setup cap (none existed): a
-  human who keeps making fixing moves is never autopiloted for idleness.
+  players' autopilot back. Per the owner's final ruling, setup also has a
+  three-minute limit from the deal, even while a human keeps moving cards.
   Auto-readied humans keep their arrangement (ruling above).
 - Start card in a face-up stack: when the starter's hand is empty and the
   required start card lies in a face-up stack, any card of that stack (all

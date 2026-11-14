@@ -763,3 +763,53 @@ def test_fixing_moves_refresh_only_the_movers_idle_clock():
     with pytest.raises(IllegalActionError):
         room.fix(0, "unstack", None, 0)
     assert room._fix_deadlines()[0] < time.time()
+
+
+def test_setup_limit_readies_an_active_human_without_rearranging(monkeypatch):
+    from ibflip_web.rooms import SETUP_TIMEOUT_SECONDS
+
+    now = 1_000_000.0
+    monkeypatch.setattr("ibflip_web.rooms.time.time", lambda: now)
+    room = _connected_human_room()
+    me = room.engine.state.players[0]
+    now += SETUP_TIMEOUT_SECONDS - 1
+    room.fix(0, "swap", me.hand[0], 0)
+    chosen = zones(me)
+    assert room._next_auto_deadline() == room.turn_started + SETUP_TIMEOUT_SECONDS
+    room._auto_step()
+    assert not me.fixing_done
+    now += 1
+    room._auto_step()
+    assert me.fixing_done and room.status == "playing"
+    assert zones(me) == chosen
+
+
+def test_setup_limit_repairs_empty_slots_and_releases_waiting_bots(monkeypatch):
+    from ibflip_web.rooms import SETUP_TIMEOUT_SECONDS
+
+    now = 1_000_000.0
+    monkeypatch.setattr("ibflip_web.rooms.time.time", lambda: now)
+    room = _connected_human_room()
+    me = room.engine.state.players[0]
+    kh, ks = card_id(Rank.KING, Suit.HEARTS), card_id(Rank.KING, Suit.SPADES)
+    _give_face_up(room.engine, 0, 0, kh)
+    _give_face_up(room.engine, 0, 1, ks)
+    room.fix(0, "stack", ks, 0)
+    untouched = copy.deepcopy(me.face_up_slots[2])
+    now += SETUP_TIMEOUT_SECONDS
+    room.fix_activity[0] = now
+    room._auto_step()
+    assert room.status == "playing"
+    assert all(p.fixing_done and all(p.face_up_slots) for p in room.engine.state.players)
+    assert me.face_up_slots[2] == untouched
+
+
+def test_setup_limit_does_not_extend_shorter_disconnect_deadline(monkeypatch):
+    from ibflip_web.rooms import AUTOPILOT_AFTER_SECONDS
+
+    now = 1_000_000.0
+    monkeypatch.setattr("ibflip_web.rooms.time.time", lambda: now)
+    room = _connected_human_room()
+    room.seats[0].sockets.clear()
+    room.seats[0].last_seen = now
+    assert room._next_auto_deadline() == now + AUTOPILOT_AFTER_SECONDS
