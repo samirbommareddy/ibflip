@@ -61,12 +61,20 @@ mask. Only a 6 on it differs.
   1, 2 and 3 eights give the turn to the player, the opponent and the player.
 - A failed reveal keeps the revealed card, picks up the pile and passes the
   turn. Pickup and reveal are only offered when nothing is playable (fuzz).
-- A face-down 2 lets the player attempt another face-down card.
+- A face-down 2 lets the player attempt another face-down card. For every
+  rank, a card played from the hand, by a successful reveal or face-down has
+  the same effect (next seat, direction, 4 loop, flip), and finishing on the
+  last face-down card is legal or illegal exactly as from the hand.
 - Deadlocks: across 100 seeded games (25 for each table size), forced-only
-  play never revisited a position. No game hit the 20,000 step cap.
-- An independent oracle for the legal card set (4 rule derived from the pile
-  rather than the pending flag) agreed with the engine at every decision in
-  240 random games. This was a one-off script, not a committed test.
+  play never revisited a position, and none of these games reached the
+  20,000 step cap (the test asserts zero truncations).
+- Legal card sets: the committed fuzz compares every non-group decision with
+  an oracle built from the PDF matrix, with the 4 rule derived from the pile
+  rather than the engine's pending flag. It encodes the engine's reading of
+  question 1 and reads the ace-as-one, five-on-zero and start-card fields from
+  the state. The promoted-4 bug state is excluded there. It agreed at every
+  decision. A one-off run over 240 further games also agreed.
+- The policy's compact action mapping covers exactly the legal decisions.
 
 ## Questions for the owner
 

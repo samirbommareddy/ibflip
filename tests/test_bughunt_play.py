@@ -20,6 +20,7 @@ from ibflip.actions import (
     ACTION_REVEAL_DRAW_PILE_TOP,
     FACE_DOWN_ACTIONS,
 )
+from ibflip.ai.observation import compact_legal
 from ibflip.cards import RANK_BY_ID, Rank, Suit, card_id
 from ibflip.rules import can_play_on
 from ibflip.state import GameState, PendingEffect, PendingKind, Phase, Player
@@ -273,6 +274,63 @@ def test_face_down_two_plays_again_from_face_down():
     assert set(engine.get_legal_action_indices()) == {next(a for a, s in FACE_DOWN_ACTIONS.items() if s == 1)}
 
 
+def _three_ways_engine(rank, how, last):
+    """Player 0 of 3 plays ``rank`` on a 2 (everything goes on a 2): from the
+    hand, by a successful reveal (early game), or face-down."""
+    card = c(rank, Suit.CLUBS)
+    others = [Player(hand=[c(Rank.JACK, Suit.SPADES)]), Player(hand=[c(Rank.QUEEN, Suit.SPADES)])]
+    kw = dict(live_cards=[c(Rank.TWO, Suit.HEARTS)], discard_pile=[c(Rank.KING, Suit.DIAMONDS)])
+    spare = [] if last else [c(Rank.KING, Suit.HEARTS)]
+    if how == "hand":
+        me = Player(hand=[card], face_down_slots=[None, None, None] if last else [spare[0], None, None])
+    elif how == "face_down":
+        me = Player(face_down_slots=[card, *(spare or [None]), None])
+    else:
+        # A hand of three 3s is blocked on any target but 2, 3 or 7; reveal
+        # on a target the card goes on. The draw-pile top is the card.
+        threes = [c(Rank.THREE, s) for s in (Suit.HEARTS, Suit.DIAMONDS, Suit.SPADES)]
+        me = Player(hand=threes)
+        target = next(t for t in (Rank.KING, Rank.QUEEN, Rank.JACK, Rank.NINE, Rank.EIGHT, Rank.SIX)
+                      if can_play_on(rank, t))
+        kw["live_cards"] = [c(Rank.TWO, Suit.HEARTS), c(target, Suit.SPADES)]
+        kw["draw_pile"] = [card, c(Rank.ACE, Suit.DIAMONDS), c(Rank.ACE, Suit.SPADES)]
+    engine = engine_for([me, *others], **kw)
+    if how == "hand":
+        engine.step(card)
+        engine.step(ACTION_END_PLAY_GROUP)
+    elif how == "face_down":
+        engine.step(next(a for a, i in FACE_DOWN_ACTIONS.items() if i == 0))
+    else:
+        engine.step(ACTION_REVEAL_DRAW_PILE_TOP)
+    if engine.state.pending is not None and engine.state.pending.kind is PendingKind.NINE_DRAW:
+        engine.step(ACTION_RESOLVE_NINE_DRAW)
+    return engine
+
+
+@pytest.mark.parametrize("rank", list(Rank))
+def test_special_cards_act_the_same_from_hand_reveal_and_face_down(rank):
+    """A card's effect does not depend on how it reached the live cards.
+    The reveal is made with a blocked hand of 3s, so a revealed 3 is not
+    compared: wherever a 3 fits, the hand of 3s would not be blocked. With 9 the drawn card is the
+    discard's only card, a K."""
+    results = {}
+    for how in ("hand", "face_down") + (() if rank is Rank.THREE else ("reveal",)):
+        s = _three_ways_engine(rank, how, last=False).state
+        results[how] = (s.current_player, s.direction, None if s.pending is None else s.pending.kind, len(s.live_cards) == 0)
+    assert results["hand"] == results["face_down"]
+    if rank is not Rank.THREE:
+        assert results["reveal"] == results["hand"]
+
+
+@pytest.mark.parametrize("rank", list(Rank))
+def test_last_face_down_card_finish_legality_matches_hand(rank):
+    hand = _three_ways_engine(rank, "hand", last=True).state.players[0]
+    down = _three_ways_engine(rank, "face_down", last=True).state.players[0]
+    assert (hand.finish_status, hand.place) == (down.finish_status, down.place)
+    expected_illegal = rank in (Rank.TWO, Rank.TEN)
+    assert hand.place == (3 if expected_illegal else 1)
+
+
 # ---------------------------------------------------------------- fuzz
 
 
@@ -295,6 +353,42 @@ def _signature(engine: IBFlipEngine):
     )
 
 
+def _eff_index(state, pile):
+    i = len(pile) - 1
+    while i >= 0 and RANK_BY_ID[pile[i]] is Rank.FIVE:
+        if pile[i] == state.five_on_zero_card_id:
+            return None
+        i -= 1
+    return i if i >= 0 else None
+
+
+def _four_rule(state, pile) -> bool:
+    """4 rule derived from the pile itself (not the engine's pending flag)."""
+    i = _eff_index(state, pile)
+    if i is None:
+        return False
+    top = RANK_BY_ID[pile[i]]
+    if top is Rank.FOUR:
+        return True
+    if top is Rank.SIX:
+        j = _eff_index(state, pile[:i])
+        return j is not None and (RANK_BY_ID[pile[j]] is Rank.FOUR or _four_rule(state, pile[:i]))
+    return False
+
+
+def _oracle_legal(state, cards):
+    """Legal set for a non-group decision from the PDF matrix. Encodes the
+    engine's reading of owner question 1 (a 6 on a 6 keeps a 4 chain) and
+    reads the ace-as-one, five-on-zero and start-card fields from the state."""
+    if state.required_start_card_id is not None:
+        return {state.required_start_card_id}
+    i = _eff_index(state, state.live_cards)
+    target = None if i is None or state.live_cards[i] in state.ace_as_one_card_ids else RANK_BY_ID[state.live_cards[i]]
+    if _four_rule(state, state.live_cards):
+        return {v for v in cards if RANK_BY_ID[v] in (Rank.FOUR, Rank.FIVE, Rank.SIX)}
+    return {v for v in cards if can_play_on(RANK_BY_ID[v], target)}
+
+
 @pytest.mark.parametrize("n", [2, 3, 4, 5])
 def test_fuzz_turn_play_invariants(n):
     """Checks written without engine helpers:
@@ -307,9 +401,12 @@ def test_fuzz_turn_play_invariants(n):
     * no player but the one acting loses cards;
     * an open group offers exactly the same-rank cards of the zone (and
       face-up slot) it started from, plus END;
-    * a non-group decision offers only cards of the zone the PDF allows;
+    * a non-group decision offers exactly the cards the PDF matrix allows
+      (``_oracle_legal``), from the zone the PDF allows;
+    * the policy's compact mapping covers exactly the legal decisions;
     * forced-only play never repeats a position (a true deadlock).
     """
+    truncated = 0
     for seed in range(25):
         engine = IBFlipEngine(n, seed=seed)
         engine.record_events = False
@@ -354,6 +451,12 @@ def test_fuzz_turn_play_invariants(n):
             else:
                 zone = hand or fu
                 assert cards_in_legal <= set(zone)
+                if zone:
+                    # A promoted 4 never carries the 4 rule in the engine: the
+                    # known bug, see the xfail tests above.
+                    promoted_four_bug = _four_rule(s, s.live_cards) and s.pending is None
+                    if not promoted_four_bug:
+                        assert cards_in_legal == _oracle_legal(s, zone), (n, seed)
                 if not hand and not fu:
                     assert all(a in FACE_DOWN_ACTIONS for a in legal)
                     assert {FACE_DOWN_ACTIONS[a] for a in legal} == {
@@ -362,6 +465,9 @@ def test_fuzz_turn_play_invariants(n):
                     assert s.draw_pile and hand and not cards_in_legal
                 if ACTION_PICK_UP_LIVE_PILE in legal:
                     assert s.live_cards and not cards_in_legal
+            _, mapping = compact_legal(engine)
+            assert sorted(a for acts in mapping.values() for a in acts) == sorted(
+                a for a in legal if a != ACTION_RESOLVE_NINE_DRAW)
             if len(legal) == 1:
                 sig = _signature(engine)
                 assert sig not in forced_seen, f"forced-only cycle {n=} {seed=}"
@@ -380,4 +486,8 @@ def test_fuzz_turn_play_invariants(n):
                     assert not b[0], "face-up card played while hand held cards"
                 if set(b[2]) - set(a[2]):
                     assert not b[0] and not b[1], "face-down card played too early"
-        # A step cap is a truncation, not a rules failure (see rules audit).
+        else:
+            truncated += 1
+    # A step cap is a truncation, not a rules failure (see rules audit); none
+    # of these seeds reach it, so record that.
+    assert truncated == 0
