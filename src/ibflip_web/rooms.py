@@ -321,7 +321,7 @@ class Room:
             raise RoomError("Cannot remove seat now")
         target = self.seats[index]
         if expect_name is not None and target.name != expect_name:
-            raise RoomError("That seat changed — try again")
+            raise RoomError("That seat changed. Try again.")
         now = time.time()
         if expect_name is None and by is not None and target.kind == "human" and self.last_remove is not None:
             last_by, last_index, last_t = self.last_remove
@@ -720,13 +720,13 @@ class RoomRegistry:
     def create(self) -> Room:
         self.gc()
         if len(self.rooms) >= MAX_ROOMS:
-            raise RoomsFullError("The server is busy right now — too many open rooms. Please try again in a few minutes.")
+            raise RoomsFullError("The server has too many open rooms. Please try again in a few minutes.")
         for _ in range(100):
             code = _code()
             if code not in self.rooms:
                 break
         else:
-            raise RoomsFullError("Couldn't allocate a room code — please try again.")
+            raise RoomsFullError("Couldn't create a room code. Please try again.")
         room = Room(code=code, host=None)
         self.rooms[code] = room
         return room

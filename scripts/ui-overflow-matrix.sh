@@ -8,6 +8,9 @@ VERBOSE="${2:-}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 AB=(npx --yes agent-browser@0.43.0)
 "${AB[@]}" open "$URL" --args "--no-sandbox" >/dev/null
+# Bypass the HTTP cache so the run always checks the files on disk.
+"${AB[@]}" eval 'Promise.all(["./", "./styles.css", "./app.js"].map((u) => fetch(u, { cache: "reload" }))).then(() => 1)' >/dev/null
+"${AB[@]}" open "$URL" >/dev/null
 "${AB[@]}" eval "$(cat "$HERE/tests/ui/board-fixtures.js" "$HERE/tests/ui/overflow-check.js")" >/dev/null
 # label width height root-font-px. Browser zoom Z on a WxH screen is a
 # viewport of (W/Z)x(H/Z) CSS px; text-size settings raise the root font.
@@ -22,15 +25,16 @@ total=0
 for cfg in "${CONFIGS[@]}"; do
   read -r label w h fs <<<"$cfg"
   "${AB[@]}" set viewport "$w" "$h" >/dev/null
-  res=$("${AB[@]}" eval "(async () => { document.documentElement.style.fontSize='${fs}px'; const rows = []; for (const t of ['dark','light']) { document.documentElement.dataset.theme = t; for (const f of __FIXTURES) { await __fixture(f); const r = __overflowCheck(); const kinds = {}; r.offenders.forEach((o) => (kinds[o.kind] = (kinds[o.kind] || 0) + 1)); rows.push([t, f, r.count, kinds, r.offenders.slice(0, 40)]); } } document.documentElement.style.fontSize=''; return JSON.stringify(rows); })()")
+  res=$("${AB[@]}" eval "(async () => { document.documentElement.style.fontSize='${fs}px'; const rows = []; for (const t of ['dark','light']) { document.documentElement.dataset.theme = t; for (const f of __FIXTURES) { await __fixture(f); const r = __overflowCheck(); const kinds = {}; r.offenders.forEach((o) => (kinds[o.kind] = (kinds[o.kind] || 0) + 1)); rows.push([t, f, r.count, kinds, r.offenders.slice(0, 40), r.scroll]); } } document.documentElement.style.fontSize=''; return JSON.stringify(rows); })()")
   python3 - "$label" "$res" "$VERBOSE" <<'PY'
 import json, sys
 label, raw, verbose = sys.argv[1], sys.argv[2], sys.argv[3]
 rows = json.loads(json.loads(raw))
-for theme, fixture, count, kinds, offenders in rows:
+for theme, fixture, count, kinds, offenders, scroll in rows:
     if theme != "dark" and not verbose:
         continue
-    print(f"{label:12} {theme:5} {fixture:10} {count:4}  " + " ".join(f"{k}={v}" for k, v in sorted(kinds.items())))
+    extra = f"  (table scrolls {scroll}px)" if scroll else ""
+    print(f"{label:12} {theme:5} {fixture:10} {count:4}  " + " ".join(f"{k}={v}" for k, v in sorted(kinds.items())) + extra)
     if verbose:
         for o in offenders[:40]:
             print(f"    {o['kind']:10} {o['what']} {o['detail']}")

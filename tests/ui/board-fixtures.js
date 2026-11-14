@@ -54,6 +54,7 @@
     if (!S.game) S.game = build(FIX[name]).game; // skip the first-deal animation
     await apply(build(FIX[name]));
     S.fast = false;
+    document.getAnimations().forEach((a) => a.finish());
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     return name;
   };

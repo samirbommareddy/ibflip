@@ -30,6 +30,20 @@
     return false;
   };
   const ownText = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+  // The part of an element actually on screen: clipped by every ancestor
+  // that hides or scrolls its overflow.
+  const shownRect = (el) => {
+    let r = el.getBoundingClientRect();
+    let { left, top, right, bottom } = r;
+    for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) {
+      const o = getComputedStyle(e);
+      if (o.overflowX === "visible" && o.overflowY === "visible") continue;
+      const c = e.getBoundingClientRect();
+      left = Math.max(left, c.left); top = Math.max(top, c.top);
+      right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom);
+    }
+    return { left, top, right, bottom };
+  };
   const overlap = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
 
   window.__overflowCheck = () => {
@@ -59,13 +73,16 @@
     }
     if (screen?.id === "game") {
       const zones = [
-        ...document.querySelectorAll("#game .hud, #game .seat, #game .pile-col, #game .turn-order, #game .prompt, #game #mySlots, #game #hand, #game #actionBar, #game #meBadge"),
+        ...document.querySelectorAll("#game .hud, #game .seat, #game .pile-col, #game .turn-order, #game .narration.show, #game .prompt, #game #mySlots .slot, #game #hand, #game #actionBar .btn, #game #meBadge"),
       ].filter(visible);
       for (let i = 0; i < zones.length; i++) for (let j = i + 1; j < zones.length; j++) {
         if (zones[i].contains(zones[j]) || zones[j].contains(zones[i])) continue;
-        if (overlap(zones[i].getBoundingClientRect(), zones[j].getBoundingClientRect())) add("collision", `${describe(zones[i])} x ${describe(zones[j])}`);
+        if (overlap(shownRect(zones[i]), shownRect(zones[j]))) add("collision", `${describe(zones[i])} x ${describe(zones[j])}`);
       }
     }
-    return { count: out.length, offenders: out };
+    // Not an offender: how far the table area has to scroll to show it all.
+    const wrap = document.querySelector("#game.active .table-wrap");
+    const scroll = wrap ? Math.max(0, wrap.scrollHeight - wrap.clientHeight) : 0;
+    return { count: out.length, offenders: out, scroll };
   };
 })();

@@ -115,7 +115,7 @@ def client_ip(request: Request | WebSocket) -> str:
 
 def _limit(limiter: RateLimiter, request: Request) -> None:
     if not limiter.allow(client_ip(request)):
-        raise HTTPException(429, "Too many requests — please wait a moment and try again.")
+        raise HTTPException(429, "Too many requests. Wait a moment and try again.")
 
 
 class CreateRoom(BaseModel):

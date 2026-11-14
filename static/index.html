@@ -13,15 +13,28 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <svg width="0" height="0" class="icon-defs" aria-hidden="true" focusable="false">
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></symbol>
+      <symbol id="i-react" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M8.5 14.2c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2" /><path d="M9.2 9.6h.01M14.8 9.6h.01" stroke-width="2.6" /></symbol>
+      <symbol id="i-hint" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4" /><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.4 1.1 2.2h5c0-.8.4-1.6 1.1-2.2A6 6 0 0 0 12 3Z" /></symbol>
+      <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path class="wave" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" /><path class="cross" d="M16 9.5l5 5M21 9.5l-5 5" /></symbol>
+      <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M9.7 9.4a2.4 2.4 0 1 1 3.3 2.2c-.6.3-1 .8-1 1.5v.6" /><path d="M12 16.6h.01" stroke-width="2.6" /></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5Z" /></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" /></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 6 8.5 12l6 6" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" /></symbol>
+      <symbol id="i-turn" viewBox="0 0 24 24"><path d="M4 12h15M14 7l5 5-5 5" /></symbol>
+    </svg>
+
     <!-- ============================== HOME ============================== -->
     <section id="home" class="screen active" aria-label="Home">
       <div class="home-inner">
-        <div class="home-heading">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <button class="theme-toggle" data-theme-toggle type="button" aria-label="Switch to dark mode">Dark mode</button>
-        </div>
-        <h1 class="logo">IB<span>·</span>Flip</h1>
-        <p class="tagline">A good hand can turn in a moment.</p>
+        <header class="home-heading">
+          <h1 class="logo">IB-Flip</h1>
+          <button class="theme-toggle" data-theme-toggle type="button" aria-label="Switch to dark mode">
+            <svg class="icon" aria-hidden="true"><use href="#i-moon" /></svg><span>Dark mode</span>
+          </button>
+        </header>
 
         <div class="lost-notice hidden" id="lostNotice" role="status">
           <p class="lost-title">That table has closed</p>
@@ -32,89 +45,96 @@
           </div>
         </div>
 
-        <div class="panel home-panel">
+        <div class="home-panel">
           <label class="field">
-            <span>Your name</span>
-            <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="e.g. Sam" />
+            <span class="field-label">Your name</span>
+            <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="e.g. Copernicus" />
           </label>
 
-          <div class="mode-tabs" role="tablist">
-            <button class="tab active" data-tab="bots" role="tab">Play vs bots</button>
-            <button class="tab" data-tab="friends" role="tab">Play with friends</button>
+          <div class="mode-tabs" role="tablist" aria-label="Game type">
+            <button class="tab active" data-tab="bots" role="tab" aria-selected="true">Play vs bots</button>
+            <button class="tab" data-tab="friends" role="tab" aria-selected="false">Play with friends</button>
           </div>
 
-          <div class="tab-body" data-body="bots">
+          <div class="tab-body" data-body="bots" role="tabpanel">
             <div class="row">
-              <span class="row-label">Opponents</span>
-              <div class="seg" id="botCount">
+              <span class="row-label" id="botCountLabel">Opponents</span>
+              <div class="seg" id="botCount" role="group" aria-labelledby="botCountLabel">
                 <button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="on">3</button><button data-v="4">4</button>
               </div>
             </div>
             <div class="row">
-              <span class="row-label">Difficulty</span>
-              <div class="seg" id="botLevel">
-                <button data-v="easy">Rookie</button><button data-v="medium">Regular</button><button data-v="hard" class="on">Shark <small>AI</small></button>
+              <span class="row-label" id="botLevelLabel">Difficulty</span>
+              <div class="seg" id="botLevel" role="group" aria-labelledby="botLevelLabel">
+                <button data-v="easy">Rookie</button><button data-v="medium">Regular</button><button data-v="hard" class="on">Shark</button>
               </div>
             </div>
-            <button id="quickPlay" class="btn primary big">Start a game <span aria-hidden="true">↗</span></button>
+            <button id="quickPlay" class="btn primary big">Start game</button>
           </div>
 
-          <div class="tab-body hidden" data-body="friends">
-            <button id="createRoom" class="btn primary big">Create a room</button>
-            <div class="or"><span>or join one</span></div>
-            <div class="join-row">
-              <input id="codeInput" maxlength="9" placeholder="ROOM CODE" autocapitalize="characters" autocomplete="off" spellcheck="false" />
-              <button id="joinRoom" class="btn">Join</button>
+          <div class="tab-body hidden" data-body="friends" role="tabpanel">
+            <div class="friends-option">
+              <p class="field-label">New room</p>
+              <button id="createRoom" class="btn primary big">Create a room</button>
+            </div>
+            <div class="friends-option">
+              <label class="field-label" for="codeInput">Join a room</label>
+              <div class="join-row">
+                <input id="codeInput" maxlength="9" placeholder="Room code" autocapitalize="characters" autocomplete="off" spellcheck="false" />
+                <button id="joinRoom" class="btn">Join</button>
+              </div>
             </div>
           </div>
           <p id="homeError" class="error" role="alert"></p>
         </div>
-        <button class="link-btn" data-open="rules">How to play</button>
-        <a class="review-link hidden" data-design-review>Design review ↗</a>
-        <p id="serverNote" class="server-note"></p>
+        <div class="home-links">
+          <button class="link-btn" data-open="rules" type="button">How to play</button>
+          <a class="link-btn review-link hidden" data-design-review>Design review</a>
+        </div>
+        <p id="serverNote" class="server-note" role="status"></p>
       </div>
     </section>
 
     <!-- ============================== LOBBY ============================= -->
     <section id="lobby" class="screen" aria-label="Lobby">
       <div class="lobby-inner panel">
-        <button class="icon-btn back" id="leaveLobby" title="Leave">←</button>
-        <p class="eyebrow">Room code</p>
+        <button class="icon-btn back" id="leaveLobby" type="button" title="Leave room" aria-label="Leave room"><svg class="icon" aria-hidden="true"><use href="#i-back" /></svg></button>
+        <p class="lobby-label">Room code</p>
         <div class="room-code" id="roomCode">----</div>
         <button class="btn ghost" id="copyLink">Copy invite link</button>
-        <p class="muted small" id="lobbyHint">Share the code — friends join from the home screen.</p>
+        <p class="lobby-hint" id="lobbyHint">Friends can join with this code from the home screen.</p>
         <ul class="seat-list" id="seatList"></ul>
         <div class="host-controls" id="hostControls">
           <div class="add-bot">
-            <span>Add bot</span>
+            <span>Add a bot</span>
             <button class="btn small" data-addbot="easy">Rookie</button>
             <button class="btn small" data-addbot="medium">Regular</button>
             <button class="btn small" data-addbot="hard">Shark</button>
           </div>
           <button class="btn primary big" id="startGame">Start game</button>
         </div>
-        <p class="muted" id="waitHost">Waiting for the host to start…</p>
+        <p class="lobby-hint" id="waitHost">Waiting for the host to start the game.</p>
       </div>
     </section>
 
     <!-- ============================== TABLE ============================= -->
     <section id="game" class="screen" aria-label="Game table">
       <header class="hud">
-        <button class="icon-btn" id="menuBtn" title="Menu">☰</button>
+        <button class="icon-btn" id="menuBtn" type="button" title="Menu" aria-label="Menu"><svg class="icon" aria-hidden="true"><use href="#i-menu" /></svg></button>
         <div class="hud-room"><span class="muted">Room</span> <b id="hudCode">----</b></div>
-        <div class="hud-status" id="hudStatus"></div>
+        <div class="hud-status" id="hudStatus" role="status"></div>
         <div class="hud-right">
-          <button class="icon-btn" id="emoteBtn" title="React" aria-haspopup="true" aria-expanded="false" aria-controls="emoteBar">😊</button>
-          <button class="icon-btn" id="hintBtn" title="Hint: what would Shark play?">💡</button>
-          <button class="icon-btn" id="soundBtn" title="Sound">🔊</button>
-          <button class="icon-btn" data-open="rules" title="Rules">?</button>
+          <button class="icon-btn" id="emoteBtn" type="button" title="React" aria-label="React" aria-haspopup="true" aria-expanded="false" aria-controls="emoteBar"><svg class="icon" aria-hidden="true"><use href="#i-react" /></svg></button>
+          <button class="icon-btn" id="hintBtn" type="button" title="Hint: what would Shark play?" aria-label="Hint"><svg class="icon" aria-hidden="true"><use href="#i-hint" /></svg></button>
+          <button class="icon-btn" id="soundBtn" type="button" title="Mute sound" aria-label="Mute sound" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-sound" /></svg></button>
+          <button class="icon-btn" data-open="rules" type="button" title="How to play" aria-label="How to play"><svg class="icon" aria-hidden="true"><use href="#i-help" /></svg></button>
         </div>
       </header>
 
       <div class="table-wrap">
         <div class="table" id="table">
-          <div class="direction-ring" id="dirRing" aria-hidden="true"><span>➜</span><span>➜</span><span>➜</span><span>➜</span></div>
           <div class="seats" id="seats"></div>
+          <div class="turn-order" id="dirRing" role="img"><svg class="icon" aria-hidden="true"><use href="#i-turn" /></svg><span aria-hidden="true">Turn order</span></div>
 
           <div class="center" id="center">
             <div class="pile-col">
@@ -123,7 +143,7 @@
             </div>
             <div class="pile-col live-col">
               <div class="pile live-pile" id="livePile"></div>
-              <span class="pile-label" id="liveLabel">Live</span>
+              <span class="pile-label" id="liveLabel">Live pile</span>
             </div>
             <div class="pile-col">
               <div class="pile discard-pile" id="discardPile" title="Discard pile"></div>
@@ -137,7 +157,7 @@
       </div>
 
       <div class="me" id="me">
-        <div class="prompt" id="prompt"></div>
+        <div class="prompt" id="prompt" role="status"></div>
         <div class="me-main">
           <div class="me-left">
             <div class="me-badge" id="meBadge"></div>
@@ -151,12 +171,12 @@
       <div class="emote-bar" id="emoteBar" role="menu" aria-label="Reactions"></div>
       <div class="toast-stack" id="toasts" aria-live="polite"></div>
     </section>
+    <div class="seen-pop" id="seenPop" role="dialog" aria-label="Seen cards" hidden></div>
 
     <!-- ============================ OVERLAYS ============================ -->
     <div class="overlay hidden" id="resultOverlay">
-      <div class="panel result-panel">
-        <div class="result-emoji" id="resultEmoji">🏆</div>
-        <h2 id="resultTitle">You win!</h2>
+      <div class="panel result-panel" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+        <h2 id="resultTitle">You win</h2>
         <p id="resultText" class="muted"></p>
         <div class="reveal" id="revealHands"></div>
         <div class="scoreboard" id="scoreboard"></div>
@@ -170,12 +190,12 @@
     </div>
 
     <div class="overlay hidden" id="menuOverlay">
-      <div class="panel menu-panel">
-        <h3>Menu</h3>
-        <button class="btn" data-theme-toggle type="button">Dark mode</button>
-        <a class="review-link hidden" data-design-review>Design review ↗</a>
+      <div class="panel menu-panel" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
+        <h3 id="menuTitle">Menu</h3>
+        <button class="btn" data-theme-toggle type="button"><svg class="icon" aria-hidden="true"><use href="#i-moon" /></svg><span>Dark mode</span></button>
+        <a class="btn review-link hidden" data-design-review>Design review</a>
         <label class="row pace-row"><span>Bot pace</span>
-          <span class="pace"><small>Slower</small><input type="range" id="speedRange" min="0.2" max="2" step="0.05" value="0.85" /><small>Faster</small></span>
+          <span class="pace"><small>Slower</small><input type="range" id="speedRange" min="0.2" max="2" step="0.05" value="0.85" aria-label="Bot pace" /><small>Faster</small></span>
         </label>
         <button class="btn" id="copyLink2">Copy invite link</button>
         <button class="btn ghost" id="leaveGame">Leave table</button>
@@ -184,28 +204,56 @@
     </div>
 
     <div class="overlay hidden" id="rules">
-      <div class="panel rules-panel">
-        <button class="icon-btn close" data-close>✕</button>
-        <h2>How to play IB-Flip</h2>
-        <p class="lead">Get rid of all your cards — hand, then face-up, then face-down — and finish <em>legally</em>.</p>
+      <div class="panel rules-panel" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+        <button class="icon-btn close" data-close type="button" aria-label="Close" title="Close"><svg class="icon" aria-hidden="true"><use href="#i-close" /></svg></button>
+        <h2 id="rulesTitle">How to play IB-Flip</h2>
+        <p class="lead">Get rid of all your cards: your hand, then your face-up cards, then your face-down cards. You must finish <em>legally</em>.</p>
+
+        <h3>A round</h3>
         <ol class="flow">
-          <li><b>Deal.</b> Everyone gets 3 face-down, 3 face-up on top, and a 3-card hand.</li>
-          <li><b>Fix your hand.</b> Swap hand cards with your face-up cards, or combine matching ranks from your hand and face-up slots. Confirmed plays are final.</li>
-          <li><b>Lowest card starts</b> (3 is lowest; then 6, 8, 9, J, Q, K, A, 7, 2, 10, 4, 5).</li>
-          <li><b>Play</b> one or more cards of the same rank onto the live pile. Draw back to 3 while the deck lasts. Stuck? Flip the top of the deck and hope.</li>
-          <li><b>Deck empty:</b> can't play → pick up the live pile. Hand empty → play your face-up cards, then face-down cards blind.</li>
-          <li><b>First to finish legally wins.</b> Finishing in a way that gives you another turn (on a 2, a 10, a flip, an 8 heads-up…) means you <em>lose</em>.</li>
+          <li><b>Deal.</b> Everyone gets 3 face-down cards, 3 face-up cards on top of them, and a hand of 3.</li>
+          <li><b>Set up.</b> Swap hand cards with your face-up cards, or combine matching ranks from your hand and face-up slots. Confirmed plays are final.</li>
+          <li><b>Lowest card starts.</b> From lowest to highest: 3, 6, 8, 9, J, Q, K, A, 7, 2, 10, 4, 5.</li>
+          <li><b>Play</b> one or more cards of the same rank onto the live pile. Draw back up to 3 while the deck lasts. If you can't play, you may flip the top card of the deck; it plays if it fits.</li>
+          <li><b>When the deck is empty</b> and you can't play, pick up the live pile. When your hand is empty, play your face-up cards, then your face-down cards without looking.</li>
+          <li><b>The first player to finish legally wins.</b> If your last play would give you another turn (a 2, a 10, a flip, or an 8 with two players left), you <em>lose</em>.</li>
         </ol>
+
         <h3>Card powers</h3>
         <div class="powers" id="powers"></div>
+
         <h3>Flips</h3>
-        <p>A <b>10</b> or <b>four of a kind in a row</b> flips the live pile to the discard and the flipper goes again. Special flips:
-          <b>3s</b> → deal one 3 to each other player · <b>4s</b> → take a 3 from the discard, next player's turn · <b>8s</b> → the flipper <em>loses</em> ·
-          <b>9s</b> → the discard pile becomes the new live pile.</p>
+        <p>A <b>10</b>, or <b>four of a kind in a row</b>, flips the live pile to the discard, and the player who flipped goes again. Four of a kind has an extra effect for these ranks:</p>
+        <dl class="defs">
+          <div><dt>Four 3s</dt><dd>Deal one 3 to each other player.</dd></div>
+          <div><dt>Four 4s</dt><dd>Take a 3 from the discard. Then it is the next player's turn.</dd></div>
+          <div><dt>Four 8s</dt><dd>The player who flipped <em>loses</em>.</dd></div>
+          <div><dt>Four 9s</dt><dd>The discard pile becomes the new live pile.</dd></div>
+        </dl>
+
+        <h3 id="onWhatTitle">What can go on what</h3>
+        <p class="onwhat-intro" id="onTopLabel">Choose the card on top of the live pile.</p>
+        <div class="rank-picker" id="onTop" role="radiogroup" aria-labelledby="onTopLabel"></div>
+        <div class="onwhat-result" id="onWhatResult" aria-live="polite"></div>
+        <details class="grid-details">
+          <summary>Show every combination</summary>
+          <div class="matrix-wrap">
+            <p class="axis axis-top" aria-hidden="true">Card on top of the pile</p>
+            <div class="matrix-body">
+              <p class="axis axis-side" aria-hidden="true">Card you play</p>
+              <table class="matrix" id="matrix" aria-label="Rows: card you play. Columns: card on top of the pile. A filled cell means it can be played."></table>
+            </div>
+            <p class="matrix-key"><span class="key-yes" aria-hidden="true"></span>Can be played <span class="key-no" aria-hidden="true"></span>Can't be played</p>
+          </div>
+        </details>
+
         <h3>Keyboard</h3>
-        <p><b>1–9</b> play the nth playable card · <b>Space</b> main action (Done / Pick up / Flip deck / Ready) · <b>H</b> hint · <b>Esc</b> close</p>
-        <h3>What can go on what</h3>
-        <div class="matrix-wrap"><table class="matrix" id="matrix"></table></div>
+        <dl class="keys">
+          <div><dt><kbd>1</kbd> to <kbd>9</kbd></dt><dd>Play the 1st to 9th playable card</dd></div>
+          <div><dt><kbd>Space</kbd> or <kbd>Enter</kbd></dt><dd>Main action: Done, Pick up pile, Flip deck top or Ready</dd></div>
+          <div><dt><kbd>H</kbd></dt><dd>Show Shark's hint</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd>Close this window</dd></div>
+        </dl>
       </div>
     </div>
 

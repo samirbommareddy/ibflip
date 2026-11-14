@@ -8,23 +8,34 @@ const POWER = { "2": "AGAIN", "3": "REVERSE", "4": "4-LOOP", "5": "UNDER", "7": 
 const POWER_TEXT = {
   "2": "Play again.",
   "3": "Odd number of 3s reverses direction. Anything goes on a 3.",
-  "4": "Next player picks up unless they play a 4, 5 or 6 — and so on.",
+  "4": "Next player picks up unless they play a 4, 5 or 6, which passes the loop on.",
   "5": "Next player plays on the card <em>beneath</em> the 5.",
   "6": "Played on a 4 it keeps the 4-loop going.",
   "7": "Next player must play 7 or lower.",
   "8": "Skips one player per 8 played.",
-  "9": "Draws a random card from the discard — it counts as played.",
+  "9": "Draws a random card from the discard. It counts as played.",
   "10": "Flips the live pile away. Play again.",
   "A": "On a 7, an ace counts as 1: anything can follow.",
   "J": "No power.", "Q": "No power.", "K": "No power.",
 };
-// PLAYABLE_ON[played][target] (rank indexes), mirrors src/ibflip/rules.py
-const ON = {
-  A: "A23 6789JQK".split(""), "2": "A23 6789JQK".split(""), "3": "237".split(""),
-  "4": "A234 6789JQK".split(""), "5": "A234 6789JQK".split(""), "6": "2346 7".split(""),
-  "7": "A23 6789JQK".split(""), "8": "2368".split(""), "9": "23689".split(""),
-  "10": "A23 689JQK".split(""), J: "23689J".split(""), Q: "23689JQ".split(""), K: "23689JQK".split(""),
+// PLAYABLE_ON[card you play] = ranks it may go on. Mirrors src/ibflip/rules.py;
+// tests/test_client_rules_table.py fails if the two ever differ.
+const PLAYABLE_ON = {
+  "3": ["3", "7", "2"],
+  "4": ["3", "4", "6", "7", "8", "9", "J", "Q", "K", "A", "2"],
+  "5": ["3", "4", "6", "7", "8", "9", "J", "Q", "K", "A", "2"],
+  "6": ["3", "4", "6", "7", "2"],
+  "7": ["3", "6", "7", "8", "9", "J", "Q", "K", "A", "2"],
+  "8": ["3", "6", "8", "2"],
+  "9": ["3", "6", "8", "9", "2"],
+  "10": ["3", "6", "8", "9", "J", "Q", "K", "A", "2"],
+  "J": ["3", "6", "8", "9", "J", "2"],
+  "Q": ["3", "6", "8", "9", "J", "Q", "2"],
+  "K": ["3", "6", "8", "9", "J", "Q", "K", "2"],
+  "A": ["3", "6", "7", "8", "9", "J", "Q", "K", "A", "2"],
+  "2": ["3", "6", "7", "8", "9", "J", "Q", "K", "A", "2"]
 };
+const canPlayOn = (played, top) => PLAYABLE_ON[played].includes(top);
 const EMOTES = ["👏", "😂", "😱", "🔥", "😤", "🤝", "👀", "💀"];
 const LEVEL_NAME = { easy: "Rookie", medium: "Regular", hard: "Shark" };
 const A_PICKUP = 52, A_REVEAL = 54, A_END = 55, A_FACEDOWN = 67;
@@ -77,6 +88,7 @@ const S = {
   queue: [], busy: false, selected: null, sound: store.get("ibflip:sound") !== "off",
   lastGameNo: 0, resultShownFor: null, lastFlipRank: null, reconnectTimer: null, pendingAction: false,
   liveShown: [], speed: 1, nextAction: null, lastSig: "", groupSlot: null, dealing: false, autoGroup: null, fast: false, catchUp: false,
+  autoAct: null, autoActTimer: null, autoActSig: "", seenOpen: null,
 };
 
 // ===================================================================== sound
@@ -199,9 +211,10 @@ function finishText(i, p, n) {
   const who = nameOf(i), f = finishOf(p);
   const last = p.place === n;
   const where = last ? "last place" : `${ordinal(p.place)} place`;
-  if (f === "eights") return `${who} flipped the 8s — ${where}`;
-  if (f === "illegal") return `${who} finished illegally — ${where}`;
-  return `${who} finished ${ordinal(p.place)} 🎉`;
+  const Where = where[0].toUpperCase() + where.slice(1);
+  if (f === "eights") return `${who} flipped the 8s. ${Where}.`;
+  if (f === "illegal") return `${who} finished illegally. ${Where}.`;
+  return `${who} finished ${ordinal(p.place)}.`;
 }
 
 // ================================================================== HOME
@@ -209,7 +222,7 @@ function initHome() {
   const name = store.get("ibflip:name") || "";
   $("#nameInput").value = name;
   $$(".tab").forEach((t) => t.addEventListener("click", () => {
-    $$(".tab").forEach((x) => x.classList.toggle("active", x === t));
+    $$(".tab").forEach((x) => { x.classList.toggle("active", x === t); x.setAttribute("aria-selected", String(x === t)); });
     $$(".tab-body").forEach((b) => b.classList.toggle("hidden", b.dataset.body !== t.dataset.tab));
   }));
   $$(".seg").forEach((seg) => seg.addEventListener("click", (e) => {
@@ -225,6 +238,7 @@ function initHome() {
   $("#createRoom").addEventListener("click", createRoom);
   $("#joinRoom").addEventListener("click", () => joinRoom($("#codeInput").value));
   $("#codeInput").addEventListener("keydown", (e) => e.key === "Enter" && joinRoom(e.target.value));
+  $("#codeInput").addEventListener("input", (e) => { const v = e.target.value.toUpperCase(); if (v !== e.target.value) e.target.value = v; });
   $("#nameInput").addEventListener("change", (e) => store.set("ibflip:name", e.target.value.trim()));
 }
 const segVal = (id) => $(`#${id} button.on`)?.dataset.v;
@@ -233,11 +247,12 @@ function playerName() {
   if (n) store.set("ibflip:name", n);
   return n || "You";
 }
-const EXPIRED = "That room has expired — the server restarts after it's been idle for a while. Start a new one!";
+const EXPIRED = "That room has closed. Start a new game or create a new room.";
+const WAKING = "Starting the game server. This can take about 30 seconds.";
 const friendlyError = (m) => (/room not found/i.test(m || "") ? EXPIRED : m);
 async function api(path, body) {
   const note = $("#serverNote");
-  const slow = setTimeout(() => (note.textContent = "Waking up the game server… (free hosting naps — ~30s)"), 1800);
+  const slow = setTimeout(() => (note.textContent = WAKING), 1800);
   let res;
   try {
     res = await fetch(`${API}${path}`, {
@@ -246,10 +261,10 @@ async function api(path, body) {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (_) {
-    throw new Error("Can't reach the game server right now — try again in a moment.");
+    throw new Error("Can't reach the game server. Check your connection and try again.");
   } finally {
     clearTimeout(slow);
-    if (note.textContent.startsWith("Waking")) note.textContent = "";
+    if (note.textContent === WAKING) note.textContent = "";
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(friendlyError(typeof data.detail === "string" ? data.detail : res.statusText || "Request failed"));
@@ -264,8 +279,8 @@ function roomLost() {
   $("#homeError").textContent = "";
   const n = Number(segVal("botCount") || 3), level = LEVEL_NAME[segVal("botLevel") || "medium"];
   $("#lostText").textContent = quick
-    ? `The game server restarted, so that table was cleared. Deal a fresh game with the same ${n} ${level} bot${n === 1 ? "" : "s"}?`
-    : "The game server restarted, so that room was cleared. Create a new room and send your friends the new code.";
+    ? `The game server restarted and that table closed. Start a new game with ${n} ${level} bot${n === 1 ? "" : "s"}?`
+    : "The game server restarted and that room closed. Create a new room and share the new code.";
   $("#lostAgain").textContent = quick ? "Start a new game" : "Create a new room";
   $("#lostAgain").onclick = quick ? quickPlay : createRoom;
   if (!quick) $$(".tab").find((t) => t.dataset.tab === "friends")?.click();
@@ -313,6 +328,8 @@ function leaveRoom({ notify = true } = {}) {
   if (notify && S.code) store.del(ROOM_KEY(S.code));
   clearTimeout(S.reconnectTimer);
   reconnects = 0;
+  cancelAutoAct();
+  closeSeen();
   Object.assign(S, { code: null, token: null, seat: null, ws: null, room: null, game: null, queue: [], busy: false, resultShownFor: null, pendingAction: false, nextAction: null, lastSig: "", autoGroup: null });
   clearInterval(S.pingTimer);
   $("#fx").innerHTML = "";
@@ -340,7 +357,7 @@ function connect() {
     else if (msg.type === "error") {
       if (msg.fatal && /room not found/i.test(msg.message || "")) roomLost();
       else if (msg.fatal) { store.del(ROOM_KEY(S.code)); leaveRoom({ notify: false }); $("#homeError").textContent = friendlyError(msg.message); }
-      else { toast(`<b>Hmm.</b> ${esc(msg.message)}`, "bad"); S.pendingAction = false; S.nextAction = null; clearTimeout(S.pendingTimer); renderGame(); }
+      else { cancelAutoAct(); toast(esc(msg.message), "bad"); S.pendingAction = false; S.nextAction = null; clearTimeout(S.pendingTimer); renderGame(); }
     } else if (msg.type === "emote" || msg.type === "chat") bubble(msg.seat, msg.text, msg.type === "chat");
     else if (msg.type === "hint") showHint(msg.action);
     else if (msg.type === "left" || msg.type === "pong") { /* acknowledged */ }
@@ -348,6 +365,7 @@ function connect() {
   };
   ws.onclose = () => {
     if (S.ws !== ws || !S.code) return;
+    cancelAutoAct();
     S.pendingAction = false;
     $("#hudStatus").textContent = "Reconnecting…";
     const base = Math.min(10000, 1000 * 2 ** reconnects++);
@@ -388,6 +406,44 @@ function isLegalNow(action) {
 }
 // What counts as "the game moved": presence/connect broadcasts also send
 // state, and must not release a click that is still in flight.
+// The one move the server allows right now, or null when there is a choice.
+function soleLegalAction(g) {
+  const L = g?.legal || {};
+  const options = [...(L.cards || []), ...(L.face_down || []).map((k) => A_FACEDOWN + k)];
+  if (L.pick_up) options.push(A_PICKUP);
+  if (L.reveal) options.push(A_REVEAL);
+  if (L.end_group) options.push(A_END);
+  return options.length === 1 ? options[0] : null;
+}
+// Auto-act: when ending the group (Done) or picking up the pile is the only
+// legal move, send it after a short pause so the last card visibly lands
+// first. Any new state, a disconnect or leaving cancels it; it fires at most
+// once per state and only if that exact state is still current.
+const AUTO_ACT_DELAY = { [A_END]: 500, [A_PICKUP]: 750 };
+function cancelAutoAct() {
+  clearTimeout(S.autoActTimer);
+  S.autoActTimer = null; S.autoAct = null; S.autoActSig = "";
+}
+function autoActFor(g) {
+  if (!g || g.status !== "playing" || g.current !== S.seat || g.nine_draw) return null;
+  const a = soleLegalAction(g);
+  return a !== null && AUTO_ACT_DELAY[a] ? a : null;
+}
+function scheduleAutoAct() {
+  const g = S.game, a = autoActFor(g);
+  const sig = S.lastSig;
+  if (S.autoActTimer && S.autoAct === a && S.autoActSig === sig) return; // same state: keep the timer
+  cancelAutoAct();
+  if (a === null || S.pendingAction || S.autoGroup) return;
+  S.autoAct = a; S.autoActSig = sig;
+  S.autoActTimer = setTimeout(() => {
+    const due = S.autoAct === a && S.autoActSig === sig;
+    S.autoActTimer = null; S.autoAct = null; S.autoActSig = "";
+    if (!due || S.lastSig !== sig || S.pendingAction || S.busy || S.queue.length) return;
+    if (!S.ws || S.ws.readyState !== 1 || autoActFor(S.game) !== a || !isLegalNow(a)) return;
+    act(a);
+  }, AUTO_ACT_DELAY[a]);
+}
 const gameSig = (g) => (g ? JSON.stringify([g.status, g.current, g.live, g.group_count, g.hand, g.draw_count, g.discard_count, g.players.map((p) => [p.hand_count, p.face_up, p.face_down, p.place])]) : "");
 
 // ========================================================== state pump
@@ -415,6 +471,8 @@ async function pump() {
       for (const i of finished) await announceFinish(i, msg.game);
     }
   } finally { S.busy = false; S.catchUp = false; S.fast = false; }
+  // An auto-act that came due while animations were still running.
+  if (!S.queue.length) scheduleAutoAct();
 }
 
 async function apply(msg) {
@@ -426,6 +484,7 @@ async function apply(msg) {
   S.room = msg.room; S.seat = msg.you; S.game = msg.game || null;
   if (moved || !S.game || S.game.current !== S.seat) { S.pendingAction = false; clearTimeout(S.pendingTimer); }
   if (msg.room.status === "lobby" || !msg.game) {
+    cancelAutoAct();
     S.lastGameNo = msg.room.game_no;
     $("#resultOverlay").classList.add("hidden");
     renderLobby(); show("lobby"); return;
@@ -451,7 +510,8 @@ async function apply(msg) {
     const a = S.nextAction; S.nextAction = null;
     if (isLegalNow(a)) setTimeout(() => act(a), 0);
   }
-  document.title = S.game.current === S.seat && S.game.status === "playing" ? "● Your turn — IB-Flip" : "IB-Flip";
+  document.title = S.game.current === S.seat && S.game.status === "playing" ? "Your turn in IB-Flip" : "IB-Flip";
+  scheduleAutoAct();
   if (S.game.status === "over" && S.resultShownFor !== S.room.game_no) {
     S.resultShownFor = S.room.game_no;
     setTimeout(showResult, 1100);
@@ -468,9 +528,10 @@ function renderLobby() {
   r.seats.forEach((s, i) => {
     const li = document.createElement("li");
     li.className = `seat-item ${s.left ? "left" : ""}`;
-    const sub = s.left ? "Left" : s.kind === "bot" ? `Bot · ${LEVEL_NAME[s.level] ?? ""}` : s.connected ? (i === S.seat ? "You" : "Online") : "Away";
+    const role = s.left ? "Left" : s.kind === "bot" ? `${LEVEL_NAME[s.level] ?? ""} bot` : s.connected ? (i === S.seat ? "You" : "Online") : "Away";
+    const sub = s.host ? `${role}, host` : role;
     li.innerHTML = `<div class="avatar">${esc(s.avatar ?? "")}<span class="dot ${s.connected ? "" : "off"}"></span></div>
-      <div class="who"><b>${esc(s.name)}${s.host ? " 👑" : ""}</b><small>${esc(sub)}</small></div>`;
+      <div class="who"><b>${esc(s.name)}</b><small>${esc(sub)}</small></div>`;
     if (host && s.kind === "bot") {
       const sel = document.createElement("select");
       sel.innerHTML = Object.entries(LEVEL_NAME).map(([v, n]) => `<option value="${v}" ${v === s.level ? "selected" : ""}>${n}</option>`).join("");
@@ -479,7 +540,7 @@ function renderLobby() {
     }
     if (host && i !== S.seat) {
       const x = document.createElement("button");
-      x.className = "x"; x.title = "Remove"; x.textContent = "✕";
+      x.className = "x"; x.title = `Remove ${s.name}`; x.setAttribute("aria-label", `Remove ${s.name}`); x.textContent = "✕";
       x.addEventListener("click", () => send({ type: "remove", seat: i, name: s.name }));
       li.append(x);
     }
@@ -494,32 +555,18 @@ function renderLobby() {
   $("#hostControls").classList.toggle("hidden", !host);
   $("#waitHost").classList.toggle("hidden", host);
   $("#startGame").disabled = r.seats.length < 2;
-  $("#startGame").textContent = r.seats.length < 2 ? "Need 2+ players" : `Start ${r.seats.length}-player game`;
+  $("#startGame").textContent = r.seats.length < 2 ? "Add a player to start" : `Start ${r.seats.length}-player game`;
   $$("[data-addbot]").forEach((b) => (b.disabled = r.seats.length >= 5));
-  $$('[data-addbot="hard"]').forEach((b) => (b.title = r.hard_available ? "Self-play trained AI" : "AI model not deployed — plays like Regular"));
+  $$('[data-addbot="hard"]').forEach((b) => (b.title = r.hard_available ? "Trained by self-play" : "Shark model unavailable. Plays like Regular."));
 }
 function inviteLink() { return `${location.origin}${location.pathname}?room=${S.code}`; }
 async function copyInvite() {
   const link = inviteLink();
-  try { await navigator.clipboard.writeText(link); toast("<b>Copied!</b> Send it to your friends."); }
+  try { await navigator.clipboard.writeText(link); toast("Invite link copied."); }
   catch (_) { prompt("Copy this link:", link); }
 }
 
 // ================================================================= TABLE
-// Seat centres as % of the Blue table's available play area.
-const SEAT_POS = {
-  1: [[50, 17]],
-  2: [[28, 19], [72, 19]],
-  3: [[11, 48], [50, 17], [89, 48]],
-  4: [[11, 52], [32, 17], [68, 17], [89, 52]],
-};
-const SEAT_POS_NARROW = {
-  1: [[50, 14]],
-  2: [[28, 14], [72, 14]],
-  3: [[22, 37], [50, 13], [78, 37]],
-  4: [[23, 38], [28, 13], [72, 13], [77, 38]],
-};
-const narrow = () => innerWidth <= 760;
 function relIndex(i) { const n = S.game.players.length; return (i - S.seat + n) % n; }
 
 // Only touch the DOM when a piece of markup actually changed. Elements keep
@@ -533,17 +580,28 @@ function renderGame() {
   const g = S.game, r = S.room;
   if (!g) return;
   $("#hudCode").textContent = r.code;
-  $("#dirRing").classList.toggle("ccw", g.direction === -1);
+  renderTurnOrder();
   renderSeats();
   renderPiles();
   renderMe();
   renderStatus();
 }
 
+// Opponents sit in one row in turn order after you. The single turn-order
+// indicator says which way play travels along that row.
+function renderTurnOrder() {
+  const g = S.game, el = $("#dirRing");
+  const ccw = g.direction === -1;
+  el.classList.toggle("ccw", ccw);
+  el.classList.toggle("hidden", g.players.length < 3);
+  const label = ccw ? "Turn order: right to left" : "Turn order: left to right";
+  el.setAttribute("aria-label", label);
+  el.title = label;
+}
 function renderSeats() {
   const g = S.game, r = S.room, n = g.players.length;
   const seats = $("#seats");
-  const pos = (narrow() ? SEAT_POS_NARROW : SEAT_POS)[n - 1] || SEAT_POS[4];
+  seats.dataset.count = n - 1;
   const want = new Set();
   for (let i = 0; i < n; i++) if (i !== S.seat) want.add(String(i));
   $$(".seat", seats).forEach((el) => { if (!want.has(el.dataset.seat)) el.remove(); });
@@ -555,26 +613,58 @@ function renderSeats() {
       el = document.createElement("div");
       el.className = "seat";
       el.dataset.seat = i;
-      el.innerHTML = `<div class="seat-head"></div><div class="opp-row"><div class="opp-hand" data-hand="${i}"></div><div class="known" title="Cards everyone saw go into this hand"></div></div><div class="slots"></div>`;
+      el.innerHTML = `<div class="seat-top"><div class="seat-head"></div><button type="button" class="seen-btn" data-seen="${i}" aria-expanded="false" aria-controls="seenPop"></button></div><div class="opp-row"><div class="opp-hand" data-hand="${i}"></div><div class="slots"></div></div>`;
       seats.append(el);
     }
-    const [x, y] = pos[relIndex(i) - 1];
-    el.style.left = `${x}%`; el.style.top = `${y}%`;
+    el.style.order = relIndex(i);
     el.classList.toggle("turn", g.current === i);
     el.classList.toggle("out", !p.active || hasPlace(p));
     el.classList.toggle("finished", hasPlace(p));
     el.classList.toggle("ready", g.status === "fixing" && p.ready);
     el.classList.toggle("ready-wait", g.status === "fixing" && !p.ready);
-    const sub = esc(s.left ? "left" : s.kind === "bot" ? LEVEL_NAME[s.level] ?? "" : s.connected ? "" : "away");
+    const role = s.left ? "Left" : s.kind === "bot" ? LEVEL_NAME[s.level] ?? "" : s.connected ? "" : "Away";
+    const setup = g.status === "fixing" ? (p.ready ? "Ready" : "Setting up") : "";
+    const sub = setup ? `<span class="seat-state ${p.ready ? "ok" : ""}">${setup}</span>` : esc(role);
     setHTML($(".seat-head", el), `<div class="avatar">${esc(s.avatar ?? "🙂")}${s.kind === "human" ? `<span class="dot ${s.connected ? "" : "off"}"></span>` : ""}</div>
-        <div class="seat-text"><div class="seat-name">${esc(s.name ?? "Player")}</div><div class="seat-sub">${sub}</div></div>${hasPlace(p) ? `<span class="place-badge ${finishOf(p) === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span>` : ""}`);
-    const backs = Math.min(p.hand_count, 6);
-    setHTML($(".opp-hand", el), `${Array.from({ length: backs }, () => cardHTML(null)).join("")}${p.hand_count ? `<span class="hand-count">${Number(p.hand_count)}</span>` : ""}`);
-    const known = $(".known", el);
-    known.classList.toggle("hidden", !p.known.length);
-    setHTML(known, p.known.slice().sort((a, b) => a - b).map((c) => `<span class="chip ${isRed(c) ? "red" : ""}">${short(c)}</span>`).join(""));
+        <div class="seat-text"><div class="seat-name" title="${esc(s.name ?? "Player")}">${esc(s.name ?? "Player")}</div><div class="seat-sub">${sub}</div></div>${hasPlace(p) ? `<span class="place-badge ${finishOf(p) === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span>` : ""}`);
+    // A short stack stands in for the hand; the number carries the count.
+    const backs = Math.min(p.hand_count, 3);
+    setHTML($(".opp-hand", el), `${Array.from({ length: backs }, () => cardHTML(null)).join("")}${p.hand_count ? `<span class="hand-count" aria-label="${Number(p.hand_count)} cards in hand">${Number(p.hand_count)}</span>` : ""}`);
+    const seen = $(".seen-btn", el);
+    seen.classList.toggle("hidden", !p.known.length);
+    setHTML(seen, `Seen ${p.known.length}`);
+    seen.setAttribute("aria-label", `${esc(s.name ?? "Player")} holds ${p.known.length} cards everyone has seen`);
     renderSlots($(".slots", el), p, i, false);
   }
+  if (S.seenOpen !== null) fillSeen(S.seenOpen);
+}
+
+// "Seen N": the cards everyone watched go into an opponent's hand, in a
+// bounded popover opened by tap, click, keyboard or hover.
+function fillSeen(i) {
+  const p = S.game?.players[i], pop = $("#seenPop"), btn = $(`.seen-btn[data-seen="${i}"]`);
+  if (!p || !p.known.length || !btn || btn.offsetParent === null) { closeSeen(); return; }
+  const name = esc(S.room?.seats[i]?.name ?? "Player");
+  setHTML(pop, `<p class="seen-title">${name} holds these seen cards</p><div class="seen-cards">${
+    p.known.slice().sort((a, b) => a - b).map((c) => `<span class="chip ${isRed(c) ? "red" : ""}">${short(c)}</span>`).join("")}</div>`);
+  pop.hidden = false;
+  const r = btn.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+  const left = Math.max(8, Math.min(innerWidth - pw - 8, r.left + r.width / 2 - pw / 2));
+  const below = r.bottom + 6 + ph <= innerHeight - 8;
+  pop.style.left = `${left}px`;
+  pop.style.top = `${below ? r.bottom + 6 : Math.max(8, r.top - 6 - ph)}px`;
+}
+function openSeen(i) {
+  if (S.seenOpen !== null && S.seenOpen !== i) closeSeen();
+  S.seenOpen = i;
+  $(`.seen-btn[data-seen="${i}"]`)?.setAttribute("aria-expanded", "true");
+  fillSeen(i);
+}
+function closeSeen() {
+  if (S.seenOpen !== null) $(`.seen-btn[data-seen="${S.seenOpen}"]`)?.setAttribute("aria-expanded", "false");
+  S.seenOpen = null;
+  const pop = $("#seenPop");
+  if (pop) pop.hidden = true;
 }
 
 function slotHTML(p, k, mine) {
@@ -600,14 +690,16 @@ function renderSlots(container, p, seat, mine) {
 function renderPiles() {
   const g = S.game;
   const draw = $("#drawPile");
-  const dn = Math.min(g.draw_count, 5);
-  setHTML(draw, Array.from({ length: dn }, (_, i) => cardHTML(null, { extra: `style="translate:${-i * 1.2}px ${-i * 1.2}px"` })).join(""));
+  const dn = Math.min(g.draw_count, 2);
+  setHTML(draw, Array.from({ length: dn }, (_, i) => cardHTML(null, { extra: `style="translate:${-i * 3}px ${-i * 3}px"` })).join(""));
+  draw.classList.toggle("empty", !g.draw_count);
   setHTML($("#drawLabel"), g.draw_count ? `Deck <b>${Number(g.draw_count)}</b>` : "Deck empty");
   S.liveShown = [...g.live];
   drawLive(g.live);
-  const k = Math.min(Math.ceil(g.discard_count / 6), 5);
-  setHTML($("#discardPile"), Array.from({ length: k }, (_, i) => cardHTML(null, { extra: `style="translate:${-i * 1.2}px ${-i * 1.2}px; rotate:${i % 2 ? 3 : -2}deg"` })).join(""));
-  setHTML($("#discardLabel"), g.discard_count ? `Discard <b>${Number(g.discard_count)}</b>` : "Discard");
+  const k = Math.min(g.discard_count, 2);
+  setHTML($("#discardPile"), Array.from({ length: k }, (_, i) => cardHTML(null, { extra: `style="translate:${-i * 3}px ${-i * 3}px"` })).join(""));
+  $("#discardPile").classList.toggle("empty", !g.discard_count);
+  setHTML($("#discardLabel"), g.discard_count ? `Discard <b>${Number(g.discard_count)}</b>` : "Discard empty");
   const mine = g.current === S.seat && g.status === "playing" && !S.pendingAction;
   draw.classList.toggle("clickable", mine && !!g.legal?.reveal);
   $("#livePile").classList.toggle("clickable", mine && !!g.legal?.pick_up);
@@ -631,18 +723,18 @@ function drawLive(live) {
     node.style.transform = liveTransform(c, i, shown.length);
     node.classList.toggle("ace-one", aceOne.has(c));
   });
-  const by = live.length && S.lastActor !== null && S.lastActor !== undefined ? ` · ${S.lastActor === S.seat ? "you" : esc(S.room?.seats[S.lastActor]?.name ?? "")}` : "";
-  setHTML($("#liveLabel"), live.length ? `Live <b>${live.length}</b>${by}` : "Live");
+  setHTML($("#liveLabel"), live.length ? `Live pile <b>${live.length}</b>` : "Live pile");
 }
 
+// What may be played next, as a short sentence.
 function targetText(g) {
-  if (g.four_loop) return "4-loop: play a 4, 5 or 6";
-  if (g.target === null || g.target === undefined) return "anything goes";
+  if (g.four_loop) return "Play a 4, 5 or 6.";
+  if (g.target === null || g.target === undefined) return "Any card can be played.";
   const r = RANKS[g.target];
-  if (r === "7") return "7 or lower";
+  if (r === "7") return "Play a 7 or lower.";
   const top = g.live[g.live.length - 1];
-  const under = top !== undefined && rankOf(top) === "5" ? " (under the 5)" : "";
-  return `on ${r === "A" || r === "8" ? "an" : "a"} ${r}${under}`;
+  const under = top !== undefined && rankOf(top) === "5" ? ", under the 5" : "";
+  return `Play on ${r === "A" || r === "8" ? "an" : "a"} ${r}${under}.`;
 }
 
 function renderStatus() {
@@ -651,8 +743,7 @@ function renderStatus() {
   if (g.status === "fixing") hud = "Set up your table";
   else if (g.status === "over") hud = "Game over";
   else {
-    const phase = { EARLY_GAME: "Early game", MIDDLE_GAME: "Mid game", END_GAME: "End game" }[g.phase] || "";
-    hud = `${phase} · ${targetText(g)}`;
+    hud = { EARLY_GAME: "Early game", MIDDLE_GAME: "Mid game", END_GAME: "End game" }[g.phase] || "";
   }
   $("#hudStatus").textContent = hud;
   const prompt = $("#prompt");
@@ -669,25 +760,28 @@ function renderStatus() {
         ? (S.selected === null ? "Fill the empty face-up slot before you are ready. Tap a hand card, then the empty slot." : "Now tap the empty slot to fill it.")
         : S.selected === null
         ? "Tap a hand card to swap, or a face-up card to combine matching ranks."
-        : `Now tap a face-up card to ${me.face_up.some((sl) => sl.length && rankIx(sl[sl.length - 1]) === rankIx(S.selected)) ? "swap — or a matching one to stack" : "swap"}`;
+        : `Now tap a face-up card to ${me.face_up.some((sl) => sl.length && rankIx(sl[sl.length - 1]) === rankIx(S.selected)) ? "swap with, or a matching one to stack on." : "swap with."}`;
     }
   } else if (g.status === "playing") {
     if (g.current === S.seat) {
       yours = true;
       const L = g.legal || {};
+      const auto = autoActFor(g);
       if (g.nine_draw) text = "Drawing from the discard…";
-      else if (g.group_rank !== null && g.group_rank !== undefined) text = L.cards?.length ? `Add another ${RANKS[g.group_rank]} — or tap Done` : "Tap Done to finish your turn";
-      else if (L.face_down?.length) text = "Blind time — pick a face-down card";
-      else if (g.start_card !== null && g.start_card !== undefined && L.cards?.length === 1 && L.cards[0] === g.start_card) text = `You start — play your ${short(g.start_card)}`;
-      else if (!L.cards?.length && L.reveal && L.pick_up) text = "Nothing playable — flip the deck top or pick up the pile";
-      else if (!L.cards?.length && L.reveal) text = "Nothing playable — flip the top of the deck";
-      else if (!L.cards?.length && L.pick_up) text = "Nothing playable — pick up the pile";
-      else if (g.four_loop) text = "4-loop! Play a 4, 5 or 6 — or pick up";
-      else text = `Your turn — ${targetText(g)}`;
+      else if (auto === A_END) text = "No more cards to add. Ending your turn.";
+      else if (auto === A_PICKUP) text = "No playable card. Picking up the pile.";
+      else if (g.group_rank !== null && g.group_rank !== undefined) text = L.cards?.length ? `Play another ${RANKS[g.group_rank]}, or tap Done.` : "Tap Done to end your turn.";
+      else if (L.face_down?.length) text = "Pick a face-down card to play.";
+      else if (g.start_card !== null && g.start_card !== undefined && L.cards?.length === 1 && L.cards[0] === g.start_card) text = `You start. Play your ${short(g.start_card)}.`;
+      else if (!L.cards?.length && L.reveal && L.pick_up) text = "No playable card. Flip the top of the deck or pick up the pile.";
+      else if (!L.cards?.length && L.reveal) text = "No playable card. Flip the top of the deck.";
+      else if (!L.cards?.length && L.pick_up) text = "No playable card. Pick up the pile.";
+      else if (g.four_loop) text = "4-loop. Play a 4, 5 or 6, or pick up the pile.";
+      else text = `Your turn. ${targetText(g)}`;
     } else if (hasPlace(me)) {
-      text = `You finished ${placeLabel(me, g.players.length) === "last" ? "last" : ordinal(me.place)} — watching the rest…`;
+      text = `You finished ${placeLabel(me, g.players.length) === "last" ? "last" : ordinal(me.place)}.`;
     } else if (g.current !== null) {
-      text = `${nameOf(g.current)} is thinking…`;
+      text = `${nameOf(g.current)}'s turn. ${targetText(g)}`;
     }
   }
   setHTML(prompt, text);
@@ -699,7 +793,7 @@ function renderStatus() {
 
 function renderMe() {
   const g = S.game, me = g.players[S.seat], s = S.room.seats[S.seat] || {};
-  setHTML($("#meBadge"), `<div class="avatar">${esc(s.avatar ?? "🙂")}</div><div><div class="seat-name">${esc(s.name ?? "You")}</div><div class="seat-sub">You</div></div>`);
+  setHTML($("#meBadge"), `<div class="avatar">${esc(s.avatar ?? "🙂")}</div><div class="seat-name" title="${esc(s.name ?? "You")}">${esc(s.name ?? "You")}</div>`);
   const mine = g.status === "playing" && g.current === S.seat && !S.pendingAction;
   const fixing = g.status === "fixing" && !me.ready;
   const L = mine ? g.legal || {} : {};
@@ -739,9 +833,9 @@ function renderMe() {
 
   // ---- action bar: rebuilt only when the set of buttons changes
   const buttons = [];
-  if (fixing) buttons.push(["I'm ready ✓", "primary", "ready"]);
+  if (fixing) buttons.push(["Ready", "primary", "ready"]);
   if (mine) {
-    if (L.end_group) buttons.push(["Done ✓", "primary", A_END]);
+    if (L.end_group) buttons.push(["Done", "primary", A_END]);
     if (L.pick_up) buttons.push(["Pick up pile", "danger", A_PICKUP]);
     if (L.reveal) buttons.push(["Flip deck top", "primary", A_REVEAL]);
   }
@@ -755,7 +849,7 @@ function renderMe() {
 function handLayout(hand, n) {
   const cw = hand.querySelector(".card")?.offsetWidth || 80;
   // Leave room for the outer cards' rotation when the fan is wide.
-  const avail = Math.max(160, hand.clientWidth - 24 - (n > 4 ? cw * 0.6 : 0));
+  const avail = Math.max(160, hand.clientWidth - 24 - (n > 4 ? cw * 0.9 : 0));
   const margin = n > 1 ? Math.min(-cw * 0.08, (avail - n * cw) / (2 * n)) : 0;
   const spread = Math.min(20, n * 3);
   return { margin, spread, arc: Math.min(10, n * 1.6), cw };
@@ -764,6 +858,7 @@ function handLayout(hand, n) {
 function renderHand(g, me, { mine, fixing, legalCards }) {
   const hand = $("#hand");
   const cards = [...g.hand].sort((a, b) => a - b);
+  hand.style.setProperty("--n", cards.length);
   const want = new Set(cards);
   const known = new Set(me.known || []);
   const existing = new Map($$(".card", hand).map((el) => [Number(el.dataset.card), el]));
@@ -796,7 +891,7 @@ function renderHand(g, me, { mine, fixing, legalCards }) {
     el.classList.toggle("selected", fixing && S.selected === id);
     el.classList.toggle("dim", mine && !legal);
     el.classList.remove("pending");
-    el.title = mine && legal ? "Click to play · double-click to play all of this rank" : "";
+    el.title = mine && legal ? "Click to play. Double-click to play every card of this rank." : known.has(id) && g.status !== "fixing" ? "Your opponents saw you pick this card up." : "";
   });
   if (REDUCED()) return;
   for (const [id, x0] of before) {
@@ -978,12 +1073,12 @@ function narrate(html, cls = "") {
   clearTimeout(narrTimer);
   narrTimer = setTimeout(() => el.classList.add("stale"), 4200);
 }
-const POWER_NOTE = { "2": "goes again", "4": "4-loop", "5": "play under it", "7": "7 or lower next", "8": "skip", "9": "draws from the discard", "10": "flip!" };
+const POWER_NOTE = { "2": "Goes again.", "4": "Starts a 4-loop.", "5": "Next player plays under it.", "7": "Next card must be 7 or lower.", "9": "Draws from the discard.", "10": "Flips the pile." };
 function playNote(card, count, events, idx) {
   const r = rankOf(card);
   if (r === "3") {
     const rev = events.slice(idx + 1).some((e) => e.kind === "reverse");
-    return rev ? "reverse" : "";
+    return rev ? "Direction reverses." : "";
   }
   if (r === "8") return "";
   return POWER_NOTE[r] || "";
@@ -1046,7 +1141,7 @@ async function animateEvents(events, prev, next) {
     const hold = (ms) => nap((me ? HOLD_ME : ms) * S.speed);
     switch (e.kind) {
       case "start":
-        narrate(`${nameOf(who)} ${verb(who, "start", "starts")} with <b>${short(e.card)}</b>`);
+        narrate(`${nameOf(who)} ${verb(who, "start", "starts")} with <b>${short(e.card)}</b>.`);
         break;
       case "play": {
         const src = findCardEl(who, e.card);
@@ -1054,7 +1149,7 @@ async function animateEvents(events, prev, next) {
         const from = src ? rectOf(src) : cardRect(anchor);
         S.lastActor = who;
         const note = playNote(e.card, 1, events, idx);
-        narrate(`${nameOf(who)} ${verb(who, "play", "plays")} <b class="${isRed(e.card) ? "red" : ""}">${short(e.card)}</b>${note ? ` <span class="note">— ${note}</span>` : ""}`);
+        narrate(`${nameOf(who)} ${verb(who, "play", "plays")} <b class="${isRed(e.card) ? "red" : ""}">${short(e.card)}</b>.${note ? ` <span class="note">${note}</span>` : ""}`);
         await fly(from, livePileTargetRect(), e.card, { dur: me ? 300 : 520, fromRot: src ? 0 : 0, rotateTo: rot(e.card), hideSource: src });
         Sound.snap();
         pushLive(e.card);
@@ -1076,7 +1171,7 @@ async function animateEvents(events, prev, next) {
         const to = cardRect(seatAnchor(who, "hand"));
         const from = livePileTargetRect();
         Sound.swoosh();
-        narrate(`${nameOf(who)} ${verb(who, "pick", "picks")} up <b>${Number(e.cards.length)}</b> card${e.cards.length === 1 ? "" : "s"}`, me ? "bad" : "");
+        narrate(`${nameOf(who)} ${verb(who, "pick", "picks")} up <b>${Number(e.cards.length)}</b> card${e.cards.length === 1 ? "" : "s"}.`, me ? "bad" : "");
         const cards = e.cards.slice(-LIVE_FAN);
         clearLive();
         await Promise.all(cards.map((c, k) => nap(k * 60 * S.speed).then(() => fly(from, to, c, { dur: 460, fromRot: rot(c) }))));
@@ -1086,10 +1181,10 @@ async function animateEvents(events, prev, next) {
       case "flip": {
         S.lastFlipRank = e.rank;
         const r = RANKS[e.rank];
-        const label = r === "10" ? "Flip!" : r === "8" ? "Four 8s — boom!" : r === "9" ? "Four 9s — resurrect!" : r === "3" ? "Four 3s — share!" : r === "4" ? "Four 4s!" : `Four ${r}s — flip!`;
+        const label = r === "10" ? "Flip" : `Four ${r}s`;
         callout(label, r === "8");
         r === "8" ? Sound.bad() : Sound.flip();
-        narrate(`${nameOf(who)} ${verb(who, "flip", "flips")} the pile${e.rank === 7 ? " with a 10" : ` — four ${r}s`}`, r === "8" ? "bad" : "");
+        narrate(`${nameOf(who)} ${verb(who, "flip", "flips")} the pile with ${e.rank === 7 ? "a 10" : `four ${r}s`}.`, r === "8" ? "bad" : "");
         const from = livePileTargetRect();
         const to = cardRect($("#discardPile"), pileW());
         const cards = S.liveShown.slice(-LIVE_FAN);
@@ -1104,7 +1199,7 @@ async function animateEvents(events, prev, next) {
       case "take_three": {
         const from = e.kind === "take_three" ? cardRect($("#discardPile"), pileW()) : livePileTargetRect();
         await fly(from, cardRect(seatAnchor(who, "hand")), e.card, { dur: 420 });
-        narrate(`${nameOf(who)} ${verb(who, "get", "gets")} <b>${short(e.card)}</b>`);
+        narrate(`${nameOf(who)} ${verb(who, "get", "gets")} <b>${short(e.card)}</b>.`);
         await nap(200 * S.speed);
         break;
       }
@@ -1113,12 +1208,12 @@ async function animateEvents(events, prev, next) {
         Sound.slide();
         if (e.ok) {
           S.lastActor = who;
-          narrate(`${nameOf(who)} ${verb(who, "flip", "flips")} <b>${short(e.card)}</b> off the deck — it plays`);
+          narrate(`${nameOf(who)} ${verb(who, "flip", "flips")} <b>${short(e.card)}</b> from the deck. It plays.`);
           await fly(from, livePileTargetRect(), e.card, { dur: 500, rotateTo: rot(e.card) });
           pushLive(e.card);
           await hold(HOLD_BOT);
         } else {
-          narrate(`${nameOf(who)} ${verb(who, "flip", "flips")} <b>${short(e.card)}</b> off the deck — no luck`, me ? "bad" : "");
+          narrate(`${nameOf(who)} ${verb(who, "flip", "flips")} <b>${short(e.card)}</b> from the deck. It doesn't fit.`, me ? "bad" : "");
           const w = await fly(from, livePileTargetRect(), e.card, { dur: 420, keep: true });
           await nap(520 * S.speed);
           if (w) await w.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: "forwards" }).finished.catch(() => {});
@@ -1132,13 +1227,13 @@ async function animateEvents(events, prev, next) {
         const from = rectOf(hideSrc) || cardRect(slot);
         if (e.ok) {
           S.lastActor = who;
-          narrate(`${nameOf(who)} ${verb(who, "turn", "turns")} over <b>${short(e.card)}</b> — it plays`);
+          narrate(`${nameOf(who)} ${verb(who, "turn", "turns")} over <b>${short(e.card)}</b>. It plays.`);
           await fly(from, livePileTargetRect(), e.card, { dur: 540, rotateTo: rot(e.card), hideSource: hideSrc });
           Sound.snap();
           pushLive(e.card);
           await hold(HOLD_BOT);
         } else {
-          narrate(`${nameOf(who)} ${verb(who, "turn", "turns")} over <b>${short(e.card)}</b> — doesn't fit`, me ? "bad" : "");
+          narrate(`${nameOf(who)} ${verb(who, "turn", "turns")} over <b>${short(e.card)}</b>. It doesn't fit.`, me ? "bad" : "");
           const w = await fly(from, livePileTargetRect(), e.card, { dur: 460, hideSource: hideSrc, keep: true });
           Sound.bad();
           await nap(560 * S.speed);
@@ -1150,7 +1245,7 @@ async function animateEvents(events, prev, next) {
       case "nine_draw": {
         callout(`9 draws ${short(e.card)}`);
         Sound.flip();
-        narrate(`The 9 pulls <b>${short(e.card)}</b> from the discard`);
+        narrate(`The 9 draws <b>${short(e.card)}</b> from the discard.`);
         await fly(cardRect($("#discardPile"), pileW()), livePileTargetRect(), e.card, { dur: 540, rotateTo: rot(e.card) });
         pushLive(e.card);
         await nap(300 * S.speed);
@@ -1159,23 +1254,23 @@ async function animateEvents(events, prev, next) {
       case "autopilot": {
         const why = e.reason;
         const text = me
-          ? (why === "idle" ? "Took too long — Shark played for you" : "You were away — Shark played for you")
-          : why === "left" ? `${nameOf(who)} left — a bot is finishing for them`
-          : why === "away" ? `${nameOf(who)} is away — autoplaying`
-          : `${nameOf(who)} took too long — autoplaying`;
+          ? (why === "idle" ? "You took too long, so Shark played for you." : "You were away, so Shark played for you.")
+          : why === "left" ? `${nameOf(who)} left. A bot is playing for them.`
+          : why === "away" ? `${nameOf(who)} is away. A bot is playing for them.`
+          : `${nameOf(who)} took too long. A bot played for them.`;
         toast(text, "calm");
         break;
       }
       case "reverse":
-        callout("Reverse!");
+        callout("Reverse");
         $("#dirRing").classList.toggle("ccw", e.direction === -1);
         $("#dirRing").classList.remove("spin"); void $("#dirRing").offsetWidth; $("#dirRing").classList.add("spin");
         await nap(520 * S.speed);
         break;
       case "skip": {
-        callout(e.count > 1 ? `Skip ×${e.count}` : "Skip!");
+        callout(e.count > 1 ? `Skip ×${e.count}` : "Skip");
         const el = $("#narration");
-        if (el && !/skip/i.test(el.textContent)) el.insertAdjacentHTML("beforeend", ` <span class="note">— skip${e.count > 1 ? ` ×${e.count}` : ""}</span>`);
+        if (el && !el.querySelector(".skip-note")) el.insertAdjacentHTML("beforeend", ` <span class="note skip-note">${e.count > 1 ? `${e.count} players skipped.` : "Next player skipped."}</span>`);
         await nap(520 * S.speed);
         break;
       }
@@ -1212,12 +1307,12 @@ function showHint(action) {
   let el = null, text = "";
   if (action < 52) {
     el = $(`#hand .card[data-card="${action}"]`) || $(`#mySlots .card[data-card="${action}"]`);
-    text = `Shark would play <b>${short(action)}</b>`;
-  } else if (action === A_PICKUP) { el = $$("#actionBar .btn").find((b) => b.textContent.includes("Pick up")); text = "Shark would <b>pick up</b>"; }
-  else if (action === A_REVEAL) { el = $$("#actionBar .btn").find((b) => b.textContent.includes("Flip")); text = "Shark would <b>flip the deck top</b>"; }
-  else if (action === A_END) { el = $$("#actionBar .btn").find((b) => b.textContent.includes("Done")); text = "Shark would <b>stop here</b>"; }
-  else if (action >= A_FACEDOWN) { el = $(`#mySlots .card.down[data-down="${action - A_FACEDOWN}"]`); text = "Shark would flip <b>this face-down card</b>"; }
-  toast(`💡 ${text}`, "hint");
+    text = `Shark would play <b>${short(action)}</b>.`;
+  } else if (action === A_PICKUP) { el = $(`#actionBar [data-act="${A_PICKUP}"]`); text = "Shark would <b>pick up the pile</b>."; }
+  else if (action === A_REVEAL) { el = $(`#actionBar [data-act="${A_REVEAL}"]`); text = "Shark would <b>flip the top of the deck</b>."; }
+  else if (action === A_END) { el = $(`#actionBar [data-act="${A_END}"]`); text = "Shark would <b>tap Done</b>."; }
+  else if (action >= A_FACEDOWN) { el = $(`#mySlots .card.down[data-down="${action - A_FACEDOWN}"]`); text = "Shark would turn over <b>this face-down card</b>."; }
+  toast(text, "hint");
   if (el) { el.classList.remove("hint-glow"); void el.offsetWidth; el.classList.add("hint-glow"); }
 }
 
@@ -1228,43 +1323,42 @@ function showResult() {
   const n = g.players.length;
   const placed = g.players.some(hasPlace);
   const me = g.players[S.seat];
-  let youWin, emoji, title, text;
+  let youWin, title, text;
   if (placed && hasPlace(me)) {
     const f = finishOf(me);
     youWin = me.place === 1 && f === "legal" || (n === 2 && g.loser !== null && g.loser !== undefined && g.loser !== S.seat);
-    if (me.place === 1) { emoji = "🏆"; title = "You win!"; text = "Finished first — and legally."; }
-    else if (me.place === n) { emoji = "💀"; title = "Last place"; text = f === "eights" ? "You flipped the 8s." : f === "illegal" ? "You finished illegally." : "Everyone else got out first."; }
-    else { emoji = me.place === 2 ? "🥈" : "🥉"; title = `You finished ${ordinal(me.place)}`; text = `${nameOf(g.players.findIndex((p) => p.place === 1))} took 1st.`; }
+    if (me.place === 1) { title = "You win"; text = "You finished first, legally."; }
+    else if (me.place === n) { title = "Last place"; text = f === "eights" ? "You flipped the 8s." : f === "illegal" ? "You finished illegally." : "Everyone else finished first."; }
+    else { title = `You finished ${ordinal(me.place)}`; text = `${nameOf(g.players.findIndex((p) => p.place === 1))} finished 1st.`; }
   } else {
     youWin = g.winner === S.seat || (g.loser !== null && g.loser !== S.seat && n === 2);
     if (g.winner !== null && g.winner !== undefined) {
-      if (g.winner === S.seat) { emoji = "🏆"; title = "You win!"; text = "Finished first — and legally."; }
-      else { emoji = "🃏"; title = `${nameOf(g.winner)} wins`; text = "They went out first."; }
+      if (g.winner === S.seat) { title = "You win"; text = "You finished first, legally."; }
+      else { title = `${nameOf(g.winner)} wins`; text = "They finished first."; }
     } else {
       const how = finishOf(g.players[g.loser]) === "eights" || S.lastFlipRank === 5 ? "flipped the 8s" : "finished illegally";
-      if (g.loser === S.seat) { emoji = "💀"; title = "You lose"; text = `You ${how}.`; }
-      else { emoji = n === 2 ? "🏆" : "😅"; title = `${nameOf(g.loser)} ${how}`; text = n === 2 ? "Which means you win!" : "And loses the game."; }
+      if (g.loser === S.seat) { title = "You lose"; text = `You ${how}.`; }
+      else { title = `${nameOf(g.loser)} ${how}`; text = n === 2 ? "You win." : "They lose the game."; }
     }
   }
-  $("#resultEmoji").textContent = emoji;
   $("#resultTitle").innerHTML = title;
   $("#resultText").textContent = text;
-  // Standings, 1st → last (players without a place, if any, go last).
+  // Standings from 1st to last (players without a place, if any, go last).
   const order = g.players.map((p, i) => i).sort((a, b) => (g.players[a].place ?? 99) - (g.players[b].place ?? 99));
   $("#revealHands").innerHTML = order.map((i) => {
     const p = g.players[i];
     const cards = [...(p.hand || []), ...p.face_up.flat(), ...(p.face_down_cards || []).filter((c) => c !== null)];
     const f = finishOf(p);
-    const tag = hasPlace(p) ? `<span class="standing ${f === "legal" ? "" : "bad"}">${placeLabel(p, n) === "last" ? "Last" : ordinal(p.place)}</span>` : `<span class="standing none">–</span>`;
+    const tag = hasPlace(p) ? `<span class="standing ${f === "legal" ? "" : "bad"}">${placeLabel(p, n) === "last" ? "Last" : ordinal(p.place)}</span>` : `<span class="standing none"></span>`;
     const why = f === "eights" ? "8s" : f === "illegal" ? "illegal" : "";
     return `<div class="reveal-row ${i === S.seat ? "is-me" : ""}">${placed ? tag : ""}<span class="name">${esc(r.seats[i]?.avatar ?? "")} ${nameOf(i)}${why ? ` <small class="why">${why}</small>` : ""}</span><div class="cards">${
-      cards.length ? cards.map((c) => cardHTML(c, { tiny: true })).join("") : '<span class="muted small">out</span>'}</div></div>`;
+      cards.length ? cards.map((c) => cardHTML(c, { tiny: true })).join("") : '<span class="muted small">No cards left</span>'}</div></div>`;
   }).join("");
   $("#scoreboard").innerHTML = r.seats.map((s, i) => `<span class="score-pill">${esc(s.avatar ?? "")} ${i === S.seat ? "You" : esc(s.name)} <b>${Number(s.wins) || 0}</b></span>`).join("");
   const host = r.host === S.seat;
   $("#rematchBtn").classList.toggle("hidden", !host);
   $("#toLobbyBtn").classList.toggle("hidden", !host);
-  $("#rematchWait").textContent = host ? "" : "Waiting for the host to deal again…";
+  $("#rematchWait").textContent = host ? "" : "Waiting for the host to start the next game.";
   $("#resultOverlay").classList.remove("hidden");
   (host ? $("#rematchBtn") : $("#homeBtn")).focus({ preventScroll: true });
   if (youWin) { Sound.win(); confetti(); } else Sound.bad();
@@ -1306,21 +1400,77 @@ function bubble(seat, text, isChat) {
 }
 
 // ================================================================== rules
+// "What can go on what": pick the card on top of the pile and see what you
+// may play on it. The full table is one tap away for the reverse question.
+const RANK_ORDER = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"];
+const TOP_NOTE = {
+  "4": "A 4 starts a 4-loop: play a 4, 5 or 6, or pick up the pile.",
+  "5": "Nothing goes on a 5 itself. You play on the card beneath it.",
+  "7": "Only a 7 or lower can follow. An ace counts as 1 here.",
+  "10": "A 10 flips the pile away, so the next card starts a new pile.",
+};
+function renderOnWhat(top) {
+  $$("#onTop button").forEach((b) => {
+    const on = b.dataset.rank === top;
+    b.setAttribute("aria-checked", String(on));
+    b.tabIndex = on ? 0 : -1;
+  });
+  const yes = RANK_ORDER.filter((r) => canPlayOn(r, top));
+  const article = top === "A" || top === "8" ? "an" : "a";
+  $("#onWhatResult").innerHTML = `
+    <p class="onwhat-head">${yes.length ? `On ${article} ${top} you can play` : `Nothing can be played on ${article} ${top}`}</p>
+    ${yes.length ? `<ul class="rank-chips" aria-label="Ranks">${RANK_ORDER.map((r) => `<li class="${yes.includes(r) ? "yes" : "no"}">${r}${yes.includes(r) ? "" : '<span class="sr-only"> not allowed</span>'}</li>`).join("")}</ul>` : ""}
+    ${TOP_NOTE[top] ? `<p class="onwhat-note">${TOP_NOTE[top]}</p>` : ""}`;
+}
 function buildRules() {
   $("#powers").innerHTML = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"].map((r) => {
     const id = RANKS.indexOf(r) * 4 + 3;
-    return `<div class="power-item">${cardHTML(id, { tiny: true })}<div>${POWER_TEXT[r]}</div></div>`;
+    return `<div class="power-item">${cardHTML(id, { tiny: true })}<p>${POWER_TEXT[r]}</p></div>`;
   }).join("");
-  const order = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"];
-  let html = `<caption>Row = card you play · column = card on top of the live pile</caption><tr><th></th>${order.map((r) => `<th>${r}</th>`).join("")}</tr>`;
-  for (const p of order) {
-    const ok = new Set(ON[p].filter((x) => x !== " ").map((x) => (x === "1" ? "10" : x)));
-    html += `<tr><th>${p}</th>${order.map((t) => {
-      const y = t === "10" ? false : ok.has(t);
-      return `<td class="${y ? "y" : "n"}">${y ? "✓" : "·"}</td>`;
+  const picker = $("#onTop");
+  picker.innerHTML = RANK_ORDER.map((r) => `<button type="button" role="radio" data-rank="${r}" aria-checked="false">${r}</button>`).join("");
+  picker.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) renderOnWhat(b.dataset.rank); });
+  picker.addEventListener("keydown", (e) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const cur = RANK_ORDER.indexOf($("#onTop [aria-checked=true]").dataset.rank);
+    const next = RANK_ORDER[(cur + step + RANK_ORDER.length) % RANK_ORDER.length];
+    renderOnWhat(next);
+    $(`#onTop [data-rank="${next}"]`).focus();
+  });
+  renderOnWhat("K");
+  // Full table: rows are the card you play, columns the card on top.
+  const head = RANK_ORDER.map((t, c) => `<th scope="col" data-c="${c}">${t}</th>`).join("");
+  let html = `<thead><tr><td class="corner"></td>${head}</tr></thead><tbody>`;
+  RANK_ORDER.forEach((p, ri) => {
+    html += `<tr><th scope="row" data-r="${ri}">${p}</th>${RANK_ORDER.map((t, c) => {
+      const y = canPlayOn(p, t);
+      return `<td class="${y ? "y" : "n"}" data-r="${ri}" data-c="${c}" tabindex="-1" aria-label="${p} on ${t}: ${y ? "yes" : "no"}"></td>`;
     }).join("")}</tr>`;
-  }
-  $("#matrix").innerHTML = html;
+  });
+  const matrix = $("#matrix");
+  matrix.innerHTML = `${html}</tbody>`;
+  const mark = (cell) => {
+    $$(".hl", matrix).forEach((x) => x.classList.remove("hl"));
+    if (!cell?.dataset.r && !cell?.dataset.c) return;
+    const { r, c } = cell.dataset;
+    $$(`[data-r="${r}"], [data-c="${c}"]`, matrix).forEach((x) => x.classList.add("hl"));
+  };
+  matrix.addEventListener("pointerover", (e) => mark(e.target.closest("td, th")));
+  matrix.addEventListener("pointerleave", () => mark(null));
+  matrix.addEventListener("focusin", (e) => mark(e.target));
+  matrix.addEventListener("focusout", () => mark(null));
+  $("td[data-r='0'][data-c='0']", matrix).tabIndex = 0;
+  matrix.addEventListener("keydown", (e) => {
+    const cell = e.target.closest("td"); if (!cell) return;
+    const d = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowDown: [1, 0], ArrowUp: [-1, 0] }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const r = Math.max(0, Math.min(12, Number(cell.dataset.r) + d[0])), c = Math.max(0, Math.min(12, Number(cell.dataset.c) + d[1]));
+    const next = $(`td[data-r="${r}"][data-c="${c}"]`, matrix);
+    cell.tabIndex = -1; next.tabIndex = 0; next.focus();
+  });
 }
 
 // ================================================================== wiring
@@ -1331,7 +1481,9 @@ function wire() {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#111422" : "#f7f8fc";
     $$("[data-theme-toggle]").forEach((button) => {
-      button.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+      const label = button.querySelector("span") || button;
+      label.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+      button.querySelector("use")?.setAttribute("href", theme === "dark" ? "#i-sun" : "#i-moon");
       button.setAttribute("aria-label", `Switch to ${theme === "dark" ? "light" : "dark"} mode`);
     });
   };
@@ -1355,7 +1507,7 @@ function wire() {
     if (e.target.closest("[data-close]")) o.classList.add("hidden");
   }));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") $$(".overlay:not(#resultOverlay)").forEach((o) => o.classList.add("hidden"));
+    if (e.key === "Escape") { $$(".overlay:not(#resultOverlay)").forEach((o) => o.classList.add("hidden")); closeSeen(); }
     if (!$("#game").classList.contains("active") || e.target.closest("input, select, textarea")) return;
     if ($$(".overlay:not(.hidden)").length) return;
     const playable = $$("#hand .card.legal, #mySlots .card.legal");
@@ -1386,7 +1538,11 @@ function wire() {
   });
   $("#hintBtn").addEventListener("click", () => send({ type: "hint" }));
   const soundBtn = $("#soundBtn");
-  const syncSound = () => (soundBtn.textContent = S.sound ? "🔊" : "🔇");
+  const syncSound = () => {
+    soundBtn.setAttribute("aria-pressed", String(!S.sound));
+    soundBtn.classList.toggle("muted-sound", !S.sound);
+    soundBtn.title = S.sound ? "Mute sound" : "Turn sound on";
+  };
   syncSound();
   soundBtn.addEventListener("click", () => { S.sound = !S.sound; store.set("ibflip:sound", S.sound ? "on" : "off"); syncSound(); Sound.unlock(); });
   const emoteBar = $("#emoteBar"), emoteBtn = $("#emoteBtn");
@@ -1396,6 +1552,27 @@ function wire() {
   emoteBar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { send({ type: "emote", emoji: b.dataset.emote }); setEmotes(false); } });
   document.addEventListener("click", (e) => { if (!e.target.closest("#emoteBar")) setEmotes(false); });
   $("#lostDismiss").addEventListener("click", hideLost);
+  // Seen popover: click or tap toggles, keyboard works through the button,
+  // hover previews on devices with a mouse.
+  const seats = $("#seats");
+  seats.addEventListener("click", (e) => {
+    const b = e.target.closest(".seen-btn"); if (!b) return;
+    e.stopPropagation();
+    const i = Number(b.dataset.seen);
+    if (S.seenOpen === i && !b.dataset.hoverOpen) closeSeen(); else openSeen(i);
+    delete b.dataset.hoverOpen;
+  });
+  if (matchMedia("(hover: hover)").matches) {
+    seats.addEventListener("pointerover", (e) => {
+      const b = e.target.closest(".seen-btn");
+      if (b && S.seenOpen !== Number(b.dataset.seen)) { b.dataset.hoverOpen = "1"; openSeen(Number(b.dataset.seen)); }
+    });
+    seats.addEventListener("pointerout", (e) => {
+      const b = e.target.closest(".seen-btn");
+      if (b && b.dataset.hoverOpen && !b.contains(e.relatedTarget)) { delete b.dataset.hoverOpen; closeSeen(); }
+    });
+  }
+  document.addEventListener("click", (e) => { if (S.seenOpen !== null && !e.target.closest("#seenPop, .seen-btn")) closeSeen(); });
   wireTable();
   let resizeRaf = 0;
   // Tab hidden → finish in-flight animations so the queue never stalls;
@@ -1408,19 +1585,19 @@ function wire() {
   });
   window.addEventListener("resize", () => {
     cancelAnimationFrame(resizeRaf);
-    resizeRaf = requestAnimationFrame(() => S.game && $("#game").classList.contains("active") && renderGame());
+    resizeRaf = requestAnimationFrame(() => { closeSeen(); if (S.game && $("#game").classList.contains("active")) renderGame(); });
   });
 }
 
 async function wakeServer() {
   const note = $("#serverNote");
-  const slow = setTimeout(() => (note.textContent = "Waking up the game server… (free hosting naps — ~30s)"), 1800);
+  const slow = setTimeout(() => (note.textContent = WAKING), 1800);
   try {
     await fetch(`${API}/health`);
     note.textContent = "";
   } catch (_) {
-    note.textContent = "Can't reach the game server right now.";
-  } finally { clearTimeout(slow); if (note.textContent.startsWith("Waking")) note.textContent = ""; }
+    note.textContent = "Can't reach the game server. Check your connection and reload.";
+  } finally { clearTimeout(slow); if (note.textContent === WAKING) note.textContent = ""; }
 }
 
 function boot() {
