@@ -173,7 +173,11 @@ Tests: `uv run --locked python -m pytest -q` (`tests/test_stats.py`) and
 
 ## Owner setup checklist
 
-Do these when releasing. Nothing below has been done in the live account.
+Done in the live account on 14 Nov 2026: D1 `ibflip-stats` (Western Europe) with the
+schema applied, the Production `STATS_DB` binding, both Pages secrets, and the two
+Render variables. `/stats` returns 401 without the password and data arrives
+within a minute. The steps stay here for rebuilding or rotating secrets. To rotate
+the ingest secret, set the same new value in Pages and Render, then redeploy both.
 
 1. **Create the database** (Cloudflare dashboard → Storage & Databases → D1 →
    Create): name `ibflip-stats`, Workers Free plan. The current API token
