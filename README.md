@@ -71,6 +71,9 @@ For the v3 policy, the pilot run and the candidate validation, see
 
 ## How the AI works
 
+For the full story (architecture, training rounds, measurements and what didn't
+work), see [How Shark was built and trained](docs/shark-ai-report.md).
+
 IB-Flip is a multiplayer game of imperfect information: you can't see the deck,
 opponents' hands or even your own face-down cards. Shark is a policy network
 trained purely by self-play (PPO):
