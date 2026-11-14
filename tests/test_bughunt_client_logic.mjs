@@ -141,7 +141,6 @@ test("the click handler path never sends an action that is not in the server's l
 
 test(
   "slow server: after the 8 s pending timeout, a same-state broadcast must not send Done a second time",
-  { skip: bug("auto-act re-arms after the 8 s pendingAction safety timeout; a presence broadcast with the unchanged state sends Done again (app.js act() pendingTimer + scheduleAutoAct)") },
   async () => {
     await deliver(doneOnly());
     await advance(600);
@@ -155,7 +154,6 @@ test(
 
 test(
   "double-click 'play every card of this rank' still finishes in a hidden tab",
-  { skip: bug("the chain lives in animateEvents, which pump() skips when S.fast (hidden tab / backlog); S.autoGroup stays set, scheduleAutoAct bails on it, so the group is never closed and auto-Done never fires") },
   async () => {
     // Hand: two Js (32, 33). Double-click 32: client sends 32 and sets autoGroup.
     await deliver(game({ hand: [32, 33], live: [20], target: 5, legal: { cards: [32, 33] } }));
@@ -186,7 +184,6 @@ test("double-click chain in a visible tab plays the rest of the rank and then Do
 
 test(
   "a hint that arrives after the state moved on is not shown",
-  { skip: bug("showHint() never checks that the hint still matches the current state; a reply that lands after an auto-act or a bot move shows a stale (now illegal) suggestion") },
   async () => {
     const toasts = [];
     c.T.setToast((html, cls) => toasts.push([html, cls]));
@@ -197,3 +194,134 @@ test(
     assert.deepEqual(toasts.filter(([, cls]) => cls === "hint"), []);
   },
 );
+
+// ---------------------------------------------------------------- fixes
+// Follow-ups for the fixed bugs above: the same failure modes on paths the
+// original tests did not reach.
+
+const chainStart = () => game({ hand: [32, 33], live: [20], target: 5, legal: { cards: [32, 33] } });
+const chainMid = () => game({ hand: [33], live: [20, 32], target: 8, group_rank: 8, group_count: 1, legal: { cards: [33], end_group: true } });
+const chainEnd = () => game({ hand: [], live: [20, 32, 33], target: 8, group_rank: 8, group_count: 2, legal: { end_group: true } });
+
+test("double-click chain finishes when 4 or more messages arrive at once (backlog)", async () => {
+  await deliver(chainStart());
+  c.T.S.autoGroup = { rank: 8, queue: [33] };
+  c.T.act(32);
+  // The reply (with its play event) arrives with four presence broadcasts of
+  // the same state behind it, so pump() handles it in fast mode (no animation).
+  const ev = { events: [{ kind: "play", player: 0, card: 32, source: "hand" }] };
+  c.T.S.queue.push(stateMsg(chainMid(), ev), ...[1, 2, 3, 4].map(() => stateMsg(chainMid())));
+  let animated = 0;
+  c.T.setAnimateEvents(async () => { animated++; });
+  c.T.pump();
+  await advance(3000);
+  assert.equal(animated, 0, "expected the backlog to skip animation");
+  assert.deepEqual(actions(), [32, 33]);
+  await deliver(chainEnd());
+  await advance(3000);
+  assert.deepEqual(actions(), [32, 33, A_END]);
+});
+
+test("a chain card is not sent twice after the 8 s pending timeout and a same-state broadcast", async () => {
+  await deliver(chainStart());
+  c.T.S.autoGroup = { rank: 8, queue: [33] };
+  c.T.act(32);
+  await deliver(chainMid());
+  await advance(200);
+  assert.deepEqual(actions(), [32, 33]);
+  await advance(8100); // no reply: pendingAction released
+  await deliver(chainMid());
+  await advance(2000);
+  assert.deepEqual(actions(), [32, 33]);
+});
+
+test("left-over chain state for another rank never blocks auto-Done", async () => {
+  c.T.S.autoGroup = { rank: 3, queue: [12] }; // stale: a Q chain from earlier
+  await deliver(doneOnly());
+  await advance(600);
+  assert.deepEqual(actions(), [A_END]);
+  assert.equal(c.T.S.autoGroup, null);
+});
+
+test("an error reply drops the chain, so auto-Done is not blocked afterwards", async () => {
+  await deliver(chainStart());
+  c.T.S.autoGroup = { rank: 8, queue: [33] };
+  c.T.act(32);
+  ws.onmessage({ data: JSON.stringify({ type: "error", message: "Illegal move" }) });
+  assert.equal(c.T.S.autoGroup, null);
+});
+
+test("after a reconnect the same state may auto-act once more (the first send may be lost)", async () => {
+  await deliver(doneOnly());
+  await advance(600);
+  assert.deepEqual(actions(), [A_END]);
+  ws.onclose();
+  await advance(1500);
+  ws = c.sockets.at(-1);
+  ws.onopen();
+  await deliver(doneOnly());
+  await advance(600);
+  await deliver(doneOnly());
+  await advance(1000);
+  assert.deepEqual(actions(), [A_END, A_END]);
+});
+
+test("a hint is shown when it matches the current state (control)", async () => {
+  const toasts = [];
+  c.T.setToast((html, cls) => toasts.push([html, cls]));
+  await deliver(game({ hand: [44, 45], legal: { cards: [44, 45] } }));
+  c.T.send({ type: "hint" });
+  ws.onmessage({ data: JSON.stringify({ type: "hint", action: 44 }) });
+  assert.equal(toasts.filter(([, cls]) => cls === "hint").length, 1);
+});
+
+test("a hint is not shown while a newer state is still animating, or when it names an illegal move", async () => {
+  const toasts = [];
+  c.T.setToast((html, cls) => toasts.push([html, cls]));
+  await deliver(game({ hand: [44, 45], legal: { cards: [44, 45] } }));
+  c.T.send({ type: "hint" });
+  ws.onmessage({ data: JSON.stringify({ type: "hint", action: 30 }) }); // not legal here
+  c.T.setAnimateEvents(() => new Promise((r) => setTimeout(r, 500)));
+  // Visible tab: the gate is the #game screen being active, which the stub
+  // reports, so this message animates and keeps the pump busy.
+  ws.onmessage({ data: JSON.stringify(stateMsg(game({ current: 1, hand: [45], live: [20, 44] }), { events: [{ kind: "play", player: 0, card: 44, source: "hand" }] })) });
+  await flush();
+  ws.onmessage({ data: JSON.stringify({ type: "hint", action: 44 }) });
+  await advance(1000);
+  assert.deepEqual(toasts.filter(([, cls]) => cls === "hint"), []);
+});
+
+const fixing = (meOver = {}, otherOver = {}) => {
+  const g = game({ status: "fixing", phase: "FIXING", current: null, legal: {} });
+  g.players[0] = { ...g.players[0], ready: false, ...meOver };
+  g.players[1] = { ...g.players[1], ready: false, ...otherOver };
+  return g;
+};
+const readies = () => c.sent.filter((m) => m.type === "fix" && m.op === "done").length;
+
+test("Ready is sent once even if another player's fix re-renders the table before the reply", async () => {
+  await deliver(fixing());
+  assert.equal(c.T.sendReady(), true);
+  await deliver(fixing({}, { face_up: [[2], [1], [3]] })); // the other player swaps
+  assert.equal(c.T.sendReady(), false);
+  assert.equal(readies(), 1);
+  await deliver(fixing({ ready: true }));
+  assert.equal(c.T.sendReady(), false);
+  assert.equal(readies(), 1);
+});
+
+test("Ready: an error reply or a reconnect releases it; an empty face-up slot blocks it", async () => {
+  await deliver(fixing({ face_up: [[30, 34], [], [32]] }));
+  assert.equal(c.T.sendReady(), false);
+  await deliver(fixing());
+  assert.equal(c.T.sendReady(), true);
+  ws.onmessage({ data: JSON.stringify({ type: "error", message: "Fill every face-up slot" }) });
+  assert.equal(c.T.sendReady(), true);
+  ws.onclose();
+  await advance(1500);
+  ws = c.sockets.at(-1);
+  ws.onopen();
+  await deliver(fixing());
+  assert.equal(c.T.sendReady(), true);
+  assert.equal(readies(), 3);
+});

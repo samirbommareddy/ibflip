@@ -88,7 +88,7 @@ const S = {
   queue: [], busy: false, selected: null, sound: store.get("ibflip:sound") !== "off",
   lastGameNo: 0, resultShownFor: null, lastFlipRank: null, reconnectTimer: null, pendingAction: false,
   liveShown: [], speed: 1, nextAction: null, lastSig: "", groupSlot: null, dealing: false, autoGroup: null, fast: false, catchUp: false,
-  autoAct: null, autoActTimer: null, autoActSig: "", seenOpen: null,
+  autoAct: null, autoActTimer: null, autoActSig: "", autoSentSig: "", hintSig: null, readyPending: false, seenOpen: null,
 };
 
 // ===================================================================== sound
@@ -330,7 +330,7 @@ function leaveRoom({ notify = true } = {}) {
   reconnects = 0;
   cancelAutoAct();
   closeSeen();
-  Object.assign(S, { code: null, token: null, seat: null, ws: null, room: null, game: null, queue: [], busy: false, resultShownFor: null, pendingAction: false, nextAction: null, lastSig: "", autoGroup: null });
+  Object.assign(S, { code: null, token: null, seat: null, ws: null, room: null, game: null, queue: [], busy: false, resultShownFor: null, pendingAction: false, nextAction: null, lastSig: "", autoGroup: null, autoSentSig: "", hintSig: null, readyPending: false });
   clearInterval(S.pingTimer);
   $("#fx").innerHTML = "";
   $("#seats").innerHTML = "";
@@ -357,7 +357,12 @@ function connect() {
     else if (msg.type === "error") {
       if (msg.fatal && /room not found/i.test(msg.message || "")) roomLost();
       else if (msg.fatal) { store.del(ROOM_KEY(S.code)); leaveRoom({ notify: false }); $("#homeError").textContent = friendlyError(msg.message); }
-      else { cancelAutoAct(); toast(esc(msg.message), "bad"); S.pendingAction = false; S.nextAction = null; clearTimeout(S.pendingTimer); renderGame(); }
+      else {
+        // autoSentSig stays: an auto action the server refused is not re-sent.
+        cancelAutoAct(); toast(esc(msg.message), "bad");
+        S.pendingAction = false; S.nextAction = null; S.autoGroup = null; S.readyPending = false;
+        clearTimeout(S.pendingTimer); S.game && renderGame();
+      }
     } else if (msg.type === "emote" || msg.type === "chat") bubble(msg.seat, msg.text, msg.type === "chat");
     else if (msg.type === "hint") showHint(msg.action);
     else if (msg.type === "left" || msg.type === "pong") { /* acknowledged */ }
@@ -366,7 +371,9 @@ function connect() {
   ws.onclose = () => {
     if (S.ws !== ws || !S.code) return;
     cancelAutoAct();
-    S.pendingAction = false;
+    // Anything in flight may be lost: after reconnecting, the fresh state
+    // decides again (an auto action may be sent once more for it).
+    S.pendingAction = false; S.autoGroup = null; S.autoSentSig = ""; S.readyPending = false;
     $("#hudStatus").textContent = "Reconnecting…";
     const base = Math.min(10000, 1000 * 2 ** reconnects++);
     S.reconnectTimer = setTimeout(connect, base / 2 + Math.random() * base / 2);
@@ -380,6 +387,8 @@ function connect() {
   };
 }
 function send(msg) {
+  // A hint reply is only shown if the state it was asked for is still current.
+  if (msg.type === "hint") S.hintSig = S.lastSig;
   if (S.ws && S.ws.readyState === 1) S.ws.send(JSON.stringify(msg));
 }
 function act(action) {
@@ -434,15 +443,51 @@ function scheduleAutoAct() {
   const sig = S.lastSig;
   if (S.autoActTimer && S.autoAct === a && S.autoActSig === sig) return; // same state: keep the timer
   cancelAutoAct();
-  if (a === null || S.pendingAction || S.autoGroup) return;
+  // autoSentSig: an auto action was already sent for this exact state (its
+  // reply may be slow and the 8 s pending timeout may have run out).
+  if (a === null || S.pendingAction || chainOwnsTurn(g) || S.autoSentSig === sig) return;
   S.autoAct = a; S.autoActSig = sig;
   S.autoActTimer = setTimeout(() => {
     const due = S.autoAct === a && S.autoActSig === sig;
     S.autoActTimer = null; S.autoAct = null; S.autoActSig = "";
-    if (!due || S.lastSig !== sig || S.pendingAction || S.busy || S.queue.length) return;
+    if (!due || S.lastSig !== sig || S.pendingAction || S.busy || S.queue.length || S.autoSentSig === sig) return;
     if (!S.ws || S.ws.readyState !== 1 || autoActFor(S.game) !== a || !isLegalNow(a)) return;
+    S.autoSentSig = sig;
     act(a);
   }, AUTO_ACT_DELAY[a]);
+}
+// "Play every card of this rank" (double-click). The chain continues from
+// pump() on the latest applied state, so it does not depend on animations
+// (hidden tab, backlog). It owns the turn only while its group is open.
+function chainOwnsTurn(g) {
+  const ag = S.autoGroup;
+  return !!ag && !!g && g.status === "playing" && g.current === S.seat && g.group_rank === ag.rank;
+}
+function continueAutoGroup() {
+  const g = S.game, ag = S.autoGroup;
+  if (!ag) return false;
+  if (S.pendingAction) return true; // the previous card is still in flight
+  if (!chainOwnsTurn(g)) { S.autoGroup = null; return false; } // stale: never block auto-Done
+  const sig = S.lastSig;
+  if (S.autoSentSig === sig) return true; // already sent for this state
+  // Only ever chain a card the server lists as legal (and, for a face-up
+  // stack, only the current top of that same slot).
+  const legalNow = new Set(g.legal?.cards || []);
+  let nextCard;
+  if (ag.slot !== undefined) {
+    const top = (g.players[S.seat].face_up[ag.slot] || []).slice(-1)[0];
+    if (g.source === "face_up" && legalNow.has(top) && rankIx(top) === ag.rank) nextCard = top;
+  } else if (g.source === "hand") {
+    // Includes same-rank cards drawn mid-group (early game draws back to 3).
+    nextCard = (g.hand || []).filter((c) => legalNow.has(c) && rankIx(c) === ag.rank).sort((a, b) => a - b)[0];
+  }
+  let a = null;
+  if (nextCard !== undefined) { ag.queue = ag.queue.filter((c) => c !== nextCard); a = nextCard; }
+  else { S.autoGroup = null; if (g.legal?.end_group) a = A_END; }
+  if (a === null) return false;
+  S.autoSentSig = sig;
+  setTimeout(() => { if (S.lastSig === sig && !S.pendingAction && isLegalNow(a)) act(a); }, 30);
+  return true;
 }
 const gameSig = (g) => (g ? JSON.stringify([g.status, g.current, g.live, g.group_count, g.hand, g.draw_count, g.discard_count, g.players.map((p) => [p.hand_count, p.face_up, p.face_down, p.place])]) : "");
 
@@ -471,8 +516,9 @@ async function pump() {
       for (const i of finished) await announceFinish(i, msg.game);
     }
   } finally { S.busy = false; S.catchUp = false; S.fast = false; }
-  // An auto-act that came due while animations were still running.
-  if (!S.queue.length) scheduleAutoAct();
+  // On the latest state: continue a double-click chain, otherwise schedule
+  // an auto-act that came due while animations were still running.
+  if (!S.queue.length && !continueAutoGroup()) scheduleAutoAct();
 }
 
 async function apply(msg) {
@@ -483,6 +529,9 @@ async function apply(msg) {
   S.lastSig = sig;
   S.room = msg.room; S.seat = msg.you; S.game = msg.game || null;
   if (moved || !S.game || S.game.current !== S.seat) { S.pendingAction = false; clearTimeout(S.pendingTimer); }
+  if (moved) S.autoSentSig = "";
+  const meNow = S.game?.players?.[S.seat];
+  if (firstDeal || !S.game || S.game.status !== "fixing" || !meNow || meNow.ready) { S.readyPending = false; clearTimeout(S.readyTimer); }
   if (msg.room.status === "lobby" || !msg.game) {
     cancelAutoAct();
     S.lastGameNo = msg.room.game_no;
@@ -843,7 +892,7 @@ function renderMe() {
   // Buttons are reused across renders; a fresh state always re-enables them.
   $$("#actionBar button").forEach((b) => (b.disabled = false));
   const ready = $('#actionBar button[data-act="ready"]');
-  if (ready && me.face_up.some((sl) => !sl.length)) ready.disabled = true;
+  if (ready && (S.readyPending || me.face_up.some((sl) => !sl.length))) ready.disabled = true;
 }
 
 function handLayout(hand, n) {
@@ -935,14 +984,28 @@ function wireTable() {
     const id = Number(c.dataset.card);
     const rest = (S.game.players[S.seat].face_up[k] || []).filter((x) => x !== id && rankIx(x) === rankIx(id)).reverse();
     S.autoGroup = { rank: rankIx(id), queue: rest, slot: k };
+    // The first card's reply may already be in: continue from this state.
+    if (!S.pendingAction && !S.busy && !S.queue.length) continueAutoGroup();
   });
   $("#actionBar").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-act]"); if (!b) return;
-    if (b.dataset.act === "ready") { S.selected = null; send({ type: "fix", op: "done" }); b.disabled = true; return; }
+    if (b.dataset.act === "ready") { if (sendReady()) b.disabled = true; return; }
     act(Number(b.dataset.act));
   });
   $("#drawPile").addEventListener("click", () => $("#drawPile").classList.contains("clickable") && act(A_REVEAL));
   $("#livePile").addEventListener("click", () => $("#livePile").classList.contains("clickable") && act(A_PICKUP));
+}
+// Ready is sent at most once per setup: it stays disabled while the request
+// is in flight (re-renders from other players' fixes included) and until the
+// server confirms, refuses it or the socket drops.
+function sendReady() {
+  const g = S.game, me = g?.players?.[S.seat];
+  if (!g || g.status !== "fixing" || !me || me.ready || S.readyPending || me.face_up.some((sl) => !sl.length)) return false;
+  S.selected = null; S.readyPending = true;
+  send({ type: "fix", op: "done" });
+  clearTimeout(S.readyTimer);
+  S.readyTimer = setTimeout(() => { if (S.readyPending) { S.readyPending = false; S.game && renderGame(); } }, 8000);
+  return true;
 }
 function playCard(el, id) {
   if (!S.pendingAction) el.classList.add("pending");
@@ -1278,32 +1341,14 @@ async function animateEvents(events, prev, next) {
         break;
     }
   }
-  // Continue a "play all of rank" chain.
-  if (S.autoGroup && next.current === S.seat && next.group_rank === S.autoGroup.rank) {
-    // Only ever chain a card the server lists as legal (and, for a face-up
-    // stack, only the current top of that same slot).
-    const legalNow = new Set(next.legal?.cards || []);
-    let nextCard;
-    if (S.autoGroup.slot !== undefined) {
-      const top = (next.players[S.seat].face_up[S.autoGroup.slot] || []).slice(-1)[0];
-      if (next.source === "face_up" && legalNow.has(top) && rankIx(top) === S.autoGroup.rank) nextCard = top;
-    } else if (next.source === "hand") {
-      // Includes same-rank cards drawn mid-group (early game draws back to 3).
-      nextCard = (next.hand || []).filter((c) => legalNow.has(c) && rankIx(c) === S.autoGroup.rank).sort((a, b) => a - b)[0];
-    }
-    if (nextCard !== undefined) {
-      S.autoGroup.queue = S.autoGroup.queue.filter((c) => c !== nextCard);
-      setTimeout(() => act(nextCard), 30);
-    } else if (next.legal?.end_group) {
-      S.autoGroup = null;
-      setTimeout(() => act(A_END), 30);
-    }
-  } else if (S.autoGroup && next.group_rank !== S.autoGroup.rank) S.autoGroup = null;
 }
 
 // ================================================================== hints
 function showHint(action) {
   if (action === null || action === undefined) return;
+  // Drop a reply for a state that has moved on (or is about to: a state
+  // still queued or animating), or that names a move no longer legal.
+  if (S.hintSig !== S.lastSig || S.busy || S.queue.length || !isLegalNow(action)) return;
   let el = null, text = "";
   if (action < 52) {
     el = $(`#hand .card[data-card="${action}"]`) || $(`#mySlots .card[data-card="${action}"]`);
@@ -1322,25 +1367,7 @@ function showResult() {
   if (!g || g.status !== "over") return;
   const n = g.players.length;
   const placed = g.players.some(hasPlace);
-  const me = g.players[S.seat];
-  let youWin, title, text;
-  if (placed && hasPlace(me)) {
-    const f = finishOf(me);
-    youWin = me.place === 1 && f === "legal" || (n === 2 && g.loser !== null && g.loser !== undefined && g.loser !== S.seat);
-    if (me.place === 1) { title = "You win"; text = "You finished first, legally."; }
-    else if (me.place === n) { title = "Last place"; text = f === "eights" ? "You flipped the 8s." : f === "illegal" ? "You finished illegally." : "Everyone else finished first."; }
-    else { title = `You finished ${ordinal(me.place)}`; text = `${nameOf(g.players.findIndex((p) => p.place === 1))} finished 1st.`; }
-  } else {
-    youWin = g.winner === S.seat || (g.loser !== null && g.loser !== S.seat && n === 2);
-    if (g.winner !== null && g.winner !== undefined) {
-      if (g.winner === S.seat) { title = "You win"; text = "You finished first, legally."; }
-      else { title = `${nameOf(g.winner)} wins`; text = "They finished first."; }
-    } else {
-      const how = finishOf(g.players[g.loser]) === "eights" || S.lastFlipRank === 5 ? "flipped the 8s" : "finished illegally";
-      if (g.loser === S.seat) { title = "You lose"; text = `You ${how}.`; }
-      else { title = `${nameOf(g.loser)} ${how}`; text = n === 2 ? "You win." : "They lose the game."; }
-    }
-  }
+  const { title, text, mood } = resultOutcome(g);
   $("#resultTitle").innerHTML = title;
   $("#resultText").textContent = text;
   // Standings from 1st to last (players without a place, if any, go last).
@@ -1361,7 +1388,48 @@ function showResult() {
   $("#rematchWait").textContent = host ? "" : "Waiting for the host to start the next game.";
   $("#resultOverlay").classList.remove("hidden");
   (host ? $("#rematchBtn") : $("#homeBtn")).focus({ preventScroll: true });
-  if (youWin) { Sound.win(); confetti(); } else Sound.bad();
+  // One outcome drives the title, the line under it, the sound and confetti.
+  if (mood === "win") { Sound.win(); confetti(); } else if (mood === "lose") Sound.bad();
+}
+// mood: "win" (1st place), "lose" (last place, or finished illegally or by
+// flipping the 8s) or "even" (any other place: no sound). The title goes in
+// as HTML (nameOf escapes), the text as plain text.
+function resultOutcome(g) {
+  const n = g.players.length, me = g.players[S.seat];
+  const plain = (i) => (i === S.seat ? "You" : String(S.room?.seats[i]?.name ?? `Player ${i + 1}`));
+  const how = (f) => (f === "eights" ? "flipped the 8s" : "finished illegally");
+  if (g.players.some(hasPlace) && hasPlace(me)) {
+    const f = finishOf(me);
+    const first = g.players.findIndex((p) => p.place === 1);
+    if (me.place === 1) {
+      if (f === "legal") return { title: "You win", text: "You finished first, legally.", mood: "win" };
+      // The last player left after everyone else finished illegally (or by
+      // flipping the 8s) wins.
+      const others = g.players.map((p, i) => i).filter((i) => i !== S.seat);
+      const fs = new Set(others.map((i) => finishOf(g.players[i])));
+      const text = others.length === 1 ? `${plain(others[0])} ${how(finishOf(g.players[others[0]]))}.`
+        : fs.size === 1 ? `Everyone else ${how([...fs][0])}.`
+        : "Everyone else finished illegally or flipped the 8s.";
+      return { title: "You win", text, mood: "win" };
+    }
+    if (f === "eights" || f === "illegal") {
+      return { title: me.place === n ? "Last place" : `You finished ${ordinal(me.place)}`, text: `You ${how(f)}.`, mood: "lose" };
+    }
+    if (me.place === n) {
+      return { title: "Last place", text: n === 2 ? `${plain(first)} finished first.` : "Everyone else finished before you.", mood: "lose" };
+    }
+    return { title: `You finished ${ordinal(me.place)}`, text: `${plain(first)} finished 1st.`, mood: "even" };
+  }
+  // Older servers: no places, only winner and loser.
+  const hasLoser = g.loser !== null && g.loser !== undefined;
+  if (g.winner !== null && g.winner !== undefined) {
+    if (g.winner === S.seat) return { title: "You win", text: "You finished first.", mood: "win" };
+    return { title: `${nameOf(g.winner)} wins`, text: "They finished first.", mood: g.loser === S.seat ? "lose" : "even" };
+  }
+  if (!hasLoser) return { title: "Game over", text: "", mood: "even" };
+  const lost = finishOf(g.players[g.loser]) === "eights" || S.lastFlipRank === 5 ? "flipped the 8s" : "finished illegally";
+  if (g.loser === S.seat) return { title: "You lose", text: `You ${lost}.`, mood: "lose" };
+  return { title: `${nameOf(g.loser)} ${lost}`, text: n === 2 ? "You win." : "They lose the game.", mood: n === 2 ? "win" : "even" };
 }
 
 function confetti() {

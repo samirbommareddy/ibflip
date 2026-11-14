@@ -163,13 +163,14 @@ def _over_game(places, finishes, winner, loser):
     }
 
 
-@pytest.mark.xfail(strict=True, reason="BUG: results screen says 'finished first, legally' and plays the losing sound for the last player left after illegal finishers")
 def test_results_for_last_player_left_after_illegal_finishers():
     # 3 players: seats 1 and 2 finished illegally; seat 0 is left and wins.
     game = _over_game([1, 3, 2], [None, "illegal", "illegal"], winner=0, loser=1)
     result = _run_show_result(game, seat=0)
     assert result["title"] == "You win"
-    assert "legally" not in result["text"]
+    # "illegally" contains "legally": match the old wrong claim as a phrase.
+    assert "finished first, legally" not in result["text"]
+    assert result["text"] == "Everyone else finished illegally."
     assert result["won"] is True
 
 
