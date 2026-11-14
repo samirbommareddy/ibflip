@@ -849,7 +849,7 @@ function renderMe() {
 function handLayout(hand, n) {
   const cw = hand.querySelector(".card")?.offsetWidth || 80;
   // Leave room for the outer cards' rotation when the fan is wide.
-  const avail = Math.max(160, hand.clientWidth - 24 - (n > 4 ? cw * 0.9 : 0));
+  const avail = Math.max(160, hand.clientWidth - 24 - (n > 4 ? cw * 1.1 : 0));
   const margin = n > 1 ? Math.min(-cw * 0.08, (avail - n * cw) / (2 * n)) : 0;
   const spread = Math.min(20, n * 3);
   return { margin, spread, arc: Math.min(10, n * 1.6), cw };
@@ -1442,7 +1442,7 @@ function buildRules() {
   renderOnWhat("K");
   // Full table: rows are the card you play, columns the card on top.
   const head = RANK_ORDER.map((t, c) => `<th scope="col" data-c="${c}">${t}</th>`).join("");
-  let html = `<thead><tr><td class="corner"></td>${head}</tr></thead><tbody>`;
+  let html = `<colgroup><col class="col-head" /><col span="13" /></colgroup><thead><tr><td class="corner"></td>${head}</tr></thead><tbody>`;
   RANK_ORDER.forEach((p, ri) => {
     html += `<tr><th scope="row" data-r="${ri}">${p}</th>${RANK_ORDER.map((t, c) => {
       const y = canPlayOn(p, t);

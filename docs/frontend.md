@@ -53,3 +53,24 @@ use test decisions as owner approval. Browser verification should use a review
 server with a temporary feedback path, so smoke tests do not populate the
 owner's actual review. Local storage and JSON download remain fallbacks when
 the MSI server is unavailable; the interface reports where saving succeeded.
+
+## Layout and overflow checks
+
+The table keeps every zone in normal flow: opponents sit in one wrapping row
+(in turn order after you), then the turn-order indicator, the piles and the
+line saying what just happened. Text on the board is at least 14px on
+desktop and 13px on phones. When space runs out, opponents wrap and then
+collapse to one line each, and the table area scrolls on its own; the page
+never scrolls horizontally.
+
+`scripts/ui-overflow-matrix.sh [url] [--verbose]` checks this. It needs a
+local server and `agent-browser`, injects the dev-only files under
+`tests/ui/` (they are never served to players), and renders synthetic table
+states (2-player, 5-player, stress: 16+ seen cards, 18-card hands, stacked
+face-up slots, long names; and 4-player setup) at desktop, phone, 125-200%
+browser zoom and 20/24px text sizes. `tests/ui/overflow-check.js` reports
+elements outside the viewport, clipped text without an ellipsis, overlapping
+board zones and text below the minimum size. Every row should report 0.
+
+`tests/test_client_rules_table.py` keeps the "What can go on what" table in
+`static/app.js` identical to `src/ibflip/rules.py`.

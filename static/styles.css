@@ -565,8 +565,9 @@ a {
   font-size: 1rem;
 }
 .add-bot > span {
+  flex-basis: 100%;
+  text-align: center;
   font-weight: 650;
-  margin-right: 0.25rem;
 }
 .avatar {
   width: 2.125rem;
@@ -1819,7 +1820,7 @@ kbd {
   color: var(--muted);
 }
 .axis-top {
-  padding-left: calc(1.5rem + (100% - 1.5rem) / 14);
+  padding-left: 3.25rem;
   margin-bottom: 0.25rem;
 }
 .matrix-body {
@@ -1832,15 +1833,19 @@ kbd {
   transform: rotate(180deg);
   text-align: center;
   width: 1.25rem;
-  padding-top: calc((100% - 1.5rem) / 14);
+  padding-top: 1.75rem;
 }
 .matrix {
   flex: 1;
+  width: 100%;
   min-width: 0;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 2px;
   font-size: var(--label);
+}
+.matrix .col-head {
+  width: 1.75rem;
 }
 .matrix th,
 .matrix td {
