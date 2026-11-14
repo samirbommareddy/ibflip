@@ -62,8 +62,12 @@
         if (!inScroller(el) && (r.left < -1 || r.top < -1 || r.right > W + 1 || r.bottom > H + 1)) {
           add("viewport", el, `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`);
         }
-        if (!ownText(el)) continue;
         const cs = getComputedStyle(el);
+        // Regions that clip or scroll sideways must not hide content.
+        if (cs.overflowX !== "visible" && !el.classList.contains("card") && cs.textOverflow !== "ellipsis" && el.scrollWidth > el.clientWidth + 1) {
+          add("hidden-overflow", el, `${el.scrollWidth} > ${el.clientWidth}`);
+        }
+        if (!ownText(el)) continue;
         if (el.scrollWidth > el.clientWidth + 1 && cs.textOverflow !== "ellipsis" && cs.display !== "inline" && cs.overflowX !== "visible") {
           add("clipped", el, `${el.scrollWidth} > ${el.clientWidth}`);
         }

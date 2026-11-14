@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------- constants
 const RANKS = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"];
 const SUITS = ["♥", "♦", "♣", "♠"];
-const POWER = { "2": "AGAIN", "3": "REVERSE", "4": "4-LOOP", "5": "UNDER", "7": "≤ 7", "8": "SKIP", "9": "DRAW", "10": "FLIP" };
+const POWER = { "2": "Again", "3": "Reverse", "4": "4-loop", "5": "Under", "7": "≤ 7", "8": "Skip", "9": "Draw", "10": "Flip" };
 const POWER_TEXT = {
   "2": "Play again.",
   "3": "Odd number of 3s reverses direction. Anything goes on a 3.",
@@ -1512,7 +1512,8 @@ function wire() {
     if ($$(".overlay:not(.hidden)").length) return;
     const playable = $$("#hand .card.legal, #mySlots .card.legal");
     if (/^[1-9]$/.test(e.key) && playable[Number(e.key) - 1]) { e.preventDefault(); playable[Number(e.key) - 1].click(); }
-    else if (e.key === " " || e.key === "Enter") { const b = $("#actionBar .btn.primary:not(:disabled)") || $("#actionBar .btn:not(:disabled)"); if (b) { e.preventDefault(); b.click(); } }
+    // A focused control (e.g. a Seen button) keeps its own Enter/Space.
+    else if ((e.key === " " || e.key === "Enter") && !e.target.closest("button, a, summary, [tabindex]")) { const b = $("#actionBar .btn.primary:not(:disabled)") || $("#actionBar .btn:not(:disabled)"); if (b) { e.preventDefault(); b.click(); } }
     else if (e.key === "h" || e.key === "H") { if (!$("#hintBtn").disabled) send({ type: "hint" }); }
   });
   $("#leaveLobby").addEventListener("click", leaveRoom);
