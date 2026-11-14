@@ -824,7 +824,7 @@ function renderStatus() {
       else if (auto === A_PICKUP) text = "No playable card. Picking up the pile.";
       else if (g.group_rank !== null && g.group_rank !== undefined) text = L.cards?.length ? `Play another ${RANKS[g.group_rank]}, or tap Done.` : "Tap Done to end your turn.";
       else if (L.face_down?.length) text = "Pick a face-down card to play.";
-      else if (g.start_card !== null && g.start_card !== undefined && L.cards?.length === 1 && L.cards[0] === g.start_card) text = `You start. Play your ${short(g.start_card)}.`;
+      else if (g.start_card !== null && g.start_card !== undefined && L.cards?.includes(g.start_card) && L.cards.every((c) => rankIx(c) === rankIx(g.start_card))) text = L.cards.length === 1 ? `You start. Play your ${short(g.start_card)}.` : `You start. Play ${["8", "A"].includes(RANKS[rankIx(g.start_card)]) ? "an" : "a"} ${RANKS[rankIx(g.start_card)]}.`;
       else if (!L.cards?.length && L.reveal && L.pick_up) text = "No playable card. Flip the top of the deck or pick up the pile.";
       else if (!L.cards?.length && L.reveal) text = "No playable card. Flip the top of the deck.";
       else if (!L.cards?.length && L.pick_up) text = "No playable card. Pick up the pile.";
@@ -962,7 +962,7 @@ function wireTable() {
     const c = e.target.closest(".card"); if (!c || !S.game) return;
     const id = Number(c.dataset.card);
     if (S.game.status === "fixing") {
-      if (!S.game.players[S.seat].ready) { S.selected = S.selected === id ? null : id; Sound.slide(); renderGame(); }
+      if (!S.game.players[S.seat].ready && !S.readyPending) { S.selected = S.selected === id ? null : id; Sound.slide(); renderGame(); }
       return;
     }
     if (c.classList.contains("legal")) playCard(c, id);
@@ -1026,6 +1026,8 @@ async function playAllOfRank(id) {
 
 function fixSlot(k) {
   const me = S.game.players[S.seat];
+  // Setup is frozen once Ready is sent or confirmed.
+  if (me.ready || S.readyPending) return;
   const slot = me.face_up[k];
   if (S.selected === null) {
     if (slot.length > 1 && me.hand_count < 3 && S.game.draw_count === 0) send({ type: "fix", op: "unstack", slot: k });
