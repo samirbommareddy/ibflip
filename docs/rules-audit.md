@@ -24,7 +24,9 @@ owner decisions from this audit:
   hand card there (the hand then draws back to three, as after stacking; with
   an empty draw-pile the hand stays short) or by moving a card from a face-up
   stack of two or more into it. Automatic readiness (timeouts, disconnects,
-  bots) splits a card back off the largest stack. See "Face-up slot
+  bots) runs the bot fixing heuristic, which fills the slot with its best hand
+  card; if the hand is empty, or in the crash fallback, a card is split back
+  off the largest stack, which is always possible. See "Face-up slot
   correction" below.
 - Existing rulings remain: blocked early-game players may pick up or reveal;
   pickup is forbidden when a legal card is available, including a 4 chain;

@@ -271,6 +271,8 @@ def _room_with_combined_human(bots=1):
     for _ in range(bots):
         room.add_bot("medium")
     room.start()
+    for player in room.engine.state.players[1:]:
+        assert player.fixing_done and all(player.face_up_slots)  # bots fixed at start
     _deal_known_table(room.engine)
     room.fix(0, "stack", Q[1], 0)
     assert room.engine.state.players[0].face_up_slots == [[Q[0], Q[1]], [], [KING_H]]
@@ -279,8 +281,6 @@ def _room_with_combined_human(bots=1):
 
 def test_room_ready_is_refused_while_a_slot_is_empty_then_accepted():
     room = _room_with_combined_human()
-    for player in room.engine.state.players[1:]:
-        assert all(player.face_up_slots)  # bots fixed at start
     with pytest.raises(IllegalActionError):
         room.fix(0, "done", None, None)
     assert room.status == "fixing"
