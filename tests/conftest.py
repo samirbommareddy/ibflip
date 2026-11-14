@@ -14,3 +14,11 @@ def _generous_rate_limits(monkeypatch):
     for name in ("CREATE_LIMIT", "JOIN_LIMIT", "INFO_LIMIT"):
         if hasattr(main, name):
             monkeypatch.setattr(main, name, main.RateLimiter(capacity=1e9, per_minute=1e9))
+
+
+@pytest.fixture(autouse=True)
+def _stats_disabled(monkeypatch):
+    """Never send test games anywhere, even if .env configures stats ingest."""
+    import ibflip_web.stats as stats
+
+    monkeypatch.setattr(stats, "STATS", stats.Stats("", ""))

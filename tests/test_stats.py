@@ -234,3 +234,13 @@ def test_peaks_keep_the_maximum(captured):
     tracker.sample(2, 2, 1)
     peaks = {m: v for _d, m, v in tracker.take_batch()["peaks"]}
     assert peaks == {"peak_rooms": 3, "peak_active_rooms": 2, "peak_players": 2}
+
+
+def test_idle_server_sends_nothing_new(captured):
+    tracker, sent = captured
+    tracker._sampler = lambda: (2, 1, 1)
+    assert tracker.flush_sync() and tracker.flush_sync() and tracker.flush_sync()
+    assert len(sent) == 1  # the first peak sample; idle flushes after that send nothing
+    tracker._sampler = lambda: (2, 1, 3)
+    tracker.flush_sync()
+    assert len(sent) == 2 and sent[1]["peaks"][0][1:] == ["peak_players", 3]

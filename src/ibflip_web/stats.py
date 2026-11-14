@@ -128,7 +128,8 @@ class Stats:
         self._send = sender or (lambda payload: _post_json(self.url, self.secret, payload))
         self._lock = threading.Lock()
         self._counters: dict[tuple[str, str, str], int] = {}
-        self._peaks: dict[tuple[str, str], int] = {}
+        self._peaks: dict[tuple[str, str], int] = {}  # raised since the last batch
+        self._maxima: dict[tuple[str, str], int] = {}  # today's maxima already seen
         self._seen_day = ""
         self._seen_key = b""
         self._seen: set[bytes] = set()
@@ -212,10 +213,12 @@ class Stats:
         try:
             day = utc_day()
             with self._lock:
+                if any(k[0] != day for k in self._maxima):
+                    self._maxima = {k: v for k, v in self._maxima.items() if k[0] == day}
                 for metric, value in zip(PEAK_METRICS, (rooms, active_rooms, players)):
                     key = (day, metric)
-                    if value > self._peaks.get(key, -1):
-                        self._peaks[key] = int(value)
+                    if value > self._maxima.get(key, -1):  # only a new maximum is news
+                        self._maxima[key] = self._peaks[key] = int(value)
         except Exception:  # noqa: BLE001
             log.debug("stats: sample failed", exc_info=True)
 
