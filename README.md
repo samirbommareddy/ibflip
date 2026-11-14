@@ -56,11 +56,15 @@ uv run python scripts/stress_test.py --games 20000   # random-play fuzzing
 See [the rules and lifecycle audit](docs/rules-audit.md) for the rule authority,
 verified fixes, regression coverage, and training limitations. Confirmed plays
 are final. Matching face-up cards can be combined across slots during fixing.
-The shipped Shark predates the corrected rules and needs retraining and fresh
-evaluation; historical strength figures below do not validate the current game.
+The shipped Shark was trained before the rules were corrected. It plays the
+current engine through a slot adapter. It was re-measured on the current rules in
+November 2026: alone against Regular bots it wins 77 % at 2p and 33 % at 4p (fair
+shares 50 % and 25 %). A retrained v3 candidate did not beat it at 4–5 players, so
+the shipped model remains the production Shark and the bot work is closed. The
+historical figures below come from the earlier rules.
 
-For the prepared 545-input, 20-action policy and reproducible run instructions,
-see [Shark v3 training](docs/shark-training-v3.md).
+For the v3 policy, the pilot run and the candidate validation, see
+[Shark v3 training](docs/shark-training-v3.md).
 
 ## How the AI works
 

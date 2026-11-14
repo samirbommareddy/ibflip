@@ -6,6 +6,12 @@ see `docs/local-development.md`. The user-wide Modal config has been removed.
 This older handoff does not authorize a merge, deployment, or cloud training;
 follow the current user instructions and `AGENTS.md`.
 
+**Shark/bot status (14 November 2026): closed.** The search experiment
+(PRIORITY #1 below) and the v3 retraining pilot are both finished. Policy-only
+Shark with the shipped `model.npz` is final for production; see
+`docs/shark-training-v3.md#candidate-validation`. The Shark notes below are
+historical.
+
 Written at the end of a session so a fresh session (with new env vars) can
 continue. Delete this file when the phase is done.
 

@@ -1,5 +1,14 @@
 # Shark v3 training preparation
 
+> **Status (14 November 2026): closed for production.** The shipped
+> `src/ibflip/ai/model.npz` remains the production Shark. The v3 pilot candidate
+> (iteration 740) was +0.117 ± 0.009 at 2p but slightly worse at 4p and 5p, so it
+> was not promoted (see [Candidate validation](#candidate-validation)). No
+> further training or evaluation is planned. The pilot's artifacts are kept under
+> the Git-ignored `runs/shark-v3-20261107-main-7c67960/` in the main checkout,
+> together with this document and `scripts/validate_candidate.py`, in case the
+> work resumes.
+
 The audited Python engine is the rules authority. New policies have **545
 observations and 20 actions**, with schema/version metadata embedded in exports.
 The shipped `src/ibflip/ai/model.npz` remains unchanged and is an old-rules

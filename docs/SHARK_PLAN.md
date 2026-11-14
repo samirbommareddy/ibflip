@@ -1,10 +1,10 @@
 # Shark retraining plan
 
-**Preparation update:** [Shark v3 training](shark-training-v3.md) implements
-slot-aware observations/actions, unified cutoff scoring and checkpoint
-provenance. The shipped weights are still the old baseline. The owner confirmed $30 in free credit, and a bounded two-hour pilot has
-started; see the linked training document for its run and budget details. The research ideas below remain
-future work; learned fixing and search are not part of the prepared PPO pilot.
+**Status (14 November 2026): closed for production.** The v3 pilot (obs v3 +
+actions v3, Phase A) ran, and its candidate was validated locally. It beat the
+shipped model at 2p but not at 4–5p, so the shipped `model.npz` stays in
+production. See [Shark v3 training](shark-training-v3.md#candidate-validation).
+Everything below is reference material for future work, not an active plan.
 
 A plan for the next time Modal credit is available. It uses what we learned from
 three rounds of PPO, the search benchmark, and the rule changes of November 2026.
