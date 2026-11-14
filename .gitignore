@@ -27,3 +27,10 @@ screenshots/
 .dev.vars
 .dev.vars.*
 node_modules/
+
+# Other local tool state and scratch files
+.netlify/
+.modal.toml
+*.pem
+*.key
+tmp/

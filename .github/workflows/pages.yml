@@ -6,16 +6,21 @@ on:
   push:
     paths: ["static/**", "functions/**", ".github/workflows/pages.yml"]
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Run from the repository root so the private /stats Pages Functions
-          # in functions/ are compiled and uploaded with the static site.
-          wranglerVersion: "4.154.0"
-          command: pages deploy static --project-name ibflip --branch ${{ github.ref_name }}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Run from the repository root so the private /stats Pages Functions in
+      # functions/ are compiled and uploaded with the static site. The branch
+      # name is passed through the environment, never interpolated into the
+      # command line.
+      - name: Deploy with Wrangler
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BRANCH: ${{ github.ref_name }}
+        run: npx --yes wrangler@4.154.0 pages deploy static --project-name ibflip --branch "$BRANCH"

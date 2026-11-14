@@ -1,6 +1,6 @@
 # Local development on MSI
 
-Work in `/home/samir/projects/ibflip`. Keep credentials in this checkout's
+Work in the main checkout on MSI (for example `~/projects/ibflip`). Keep credentials in this checkout's
 `.env` only; it is ignored by Git and must never be copied under `static/`.
 The committed `.env.example` contains empty placeholders. For a new checkout:
 
@@ -30,7 +30,7 @@ In VS Code Remote SSH, forward port `8000` from the Ports panel. Alternatively,
 run this on your own computer while connected to Tailscale:
 
 ```bash
-ssh -N -L 8000:127.0.0.1:8000 samir@100.79.130.34
+ssh -N -L 8000:127.0.0.1:8000 <user>@<msi-tailscale-address>
 ```
 
 Keep that terminal open and visit `http://127.0.0.1:8000` on your computer.
@@ -58,8 +58,8 @@ feedback. The studio states whether the MSI save succeeded. If the review
 server is unavailable, browser storage and JSON export remain available.
 Previewing an animation does not approve it. No scenarios start approved.
 
-The previous design directions and thumbnails were archived under
-`/home/samir/history/ibflip-retired-designs-20261107-122318/` and removed from
+The previous design directions and thumbnails were archived outside the
+repository and removed from
 the active checkout. Shared card/table primitives live under `designs/shared/`;
 the motion catalog, preview execution, review storage, and review interface
 have separate owning files under `designs/lab/`.

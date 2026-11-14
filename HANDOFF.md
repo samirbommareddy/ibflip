@@ -145,8 +145,7 @@ alongside and update based on results.
 - Training scripts: `scripts/train_ppo.py` (PPO self-play, champion league,
   h2h eval), `scripts/modal_train.py` (`::main` to train, `::compare` for
   6000-game head-to-head), `scripts/evaluate.py` (vs baseline bots).
-- Modal: ~$27 of the $30 monthly credit used this month (Nov). Use only if
-  clearly worth it. The Modal token must come from env vars
+- Modal: free monthly credit only. Use only if clearly worth it. The Modal token must come from env vars
   (`MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET`) — never write it to the repo.
 
 ## Sandbox gotchas

@@ -177,7 +177,8 @@ candidate, which skips the legacy adapter).
   (commits 92da557 and cd469b1).
 - **Hand fixing is not learned.** `heuristic_fix` puts high-value ranks face up
   (10, 2, 4 and 5 rank highest in `KEEP_VALUE`), then stacks matching visible
-  and hand cards. Training and live play use the same function.
+  and hand cards. It always ends with all three face-up slots filled, as the
+  rules require. Training and live play use the same function.
 
 Training does not use the safety veto or the repetition guard. The learner
 samples straight from its masked policy, and evaluation uses the full runtime

@@ -110,7 +110,7 @@ at 2–5 players, checkpoint writes and resume.
 At preparation time, no cloud compute had been launched. The read-only `modal billing summary --json`
 returned zero metered/billed usage for this month. `modal billing rates --json`
 also succeeded. These APIs do **not** establish the unused free-credit allowance;
-the MSI dashboard redirects to login. The owner subsequently confirmed $30 in available free credit on 7 November
+the MSI dashboard redirects to login. The owner subsequently confirmed sufficient available free credit on 7 November
 2026, satisfying the pre-launch check required by `AGENTS.md`. A generic monthly plan allowance is
 not evidence of this account's available balance.
 
@@ -131,8 +131,8 @@ metadata-version checks. A local warm-start pilot against the shipped baseline
 completed training, checkpoint/export and comparisons at 2–5 players, with no
 cutoffs in those small comparisons. This is pipeline validation, not strength
 evidence. A separate local run resumed successfully at its next iteration.
-Read-only identity checks confirm both workspace and login account are
-`samir-bommareddy`. The owner confirmed $30 in remaining free credit before authorizing the
+Read-only identity checks confirmed that the workspace and login account match. The owner confirmed
+enough remaining free credit before authorizing the
 bounded pilot. A fresh read-only check showed no usage or other running apps.
 
 
@@ -142,7 +142,7 @@ The initial pilot is limited to two hours, 64 CPU cores and 32 GiB memory, with
 hard CPU/memory limits and one training container. Live rates at launch were
 $0.04730 per CPU-hour and $0.00800 per GiB-hour, estimating $6.5664 for the
 two-hour training allocation. Startup/image-build/storage overhead is additional;
-most of the confirmed $30 is reserved rather than allocated to this first run.
+most of the confirmed credit is reserved rather than allocated to this first run.
 No paid plan or automatic recharge was enabled.
 
 Use the shipped old actor to initialize shared layers and as a frozen baseline.
@@ -166,7 +166,6 @@ running; it is not evidence that the model is stronger yet.
 - Started 7 November 2026 around 14:09 Europe/Stockholm; expected trainer cutoff
   around 16:09, with a short shutdown allowance.
 - Run name: `shark-v3-20261107-main-7c67960`.
-- Dashboard: https://modal.com/apps/samir-bommareddy/main/ap-5KwrtufBE2z4bn3bXC8sHu
 - Artifacts: `ibflip-runs` volume, under the run-name directory.
 - Local receipt: `runs/shark-v3-20261107-main-7c67960/launch.json` (Git-ignored).
 - Periodic volume commits run every five minutes. Snapshots are retained every
@@ -312,7 +311,7 @@ and supersedes this recommendation.
 Reproduce (about 40 minutes on MSI with 9 workers):
 
 ```bash
-R=/home/samir/projects/ibflip/runs/shark-v3-20261107-main-7c67960/cloud-final/shark-v3-20261107-main-7c67960
+R=runs/shark-v3-20261107-main-7c67960/cloud-final/shark-v3-20261107-main-7c67960
 ./scripts/with-env uv run --locked python -u scripts/validate_candidate.py --candidate $R/actor_00740.npz \
   --timing h2h:2:6000 h2h:3:3000 h2h:4:3000 rev:3:1500 rev:4:1500 regular:2:1500 regular:4:1000
 ```
@@ -367,7 +366,7 @@ Options, in order of preference:
 Reproduce the follow-up (about 35 minutes on MSI with 10 workers):
 
 ```bash
-R=/home/samir/projects/ibflip/runs/shark-v3-20261107-main-7c67960/cloud-final/shark-v3-20261107-main-7c67960
+R=runs/shark-v3-20261107-main-7c67960/cloud-final/shark-v3-20261107-main-7c67960
 ./scripts/with-env uv run --locked python -u scripts/validate_candidate.py --workers 10 --seed-base 8500000 \
   --candidate $R/actor_00740.npz h2h:4:5000 rev:4:5000 h2h:5:3000 rev:5:3000
 ```
