@@ -4,7 +4,7 @@ name: Deploy frontend to Cloudflare Pages
 on:
   workflow_dispatch:
   push:
-    paths: ["static/**", ".github/workflows/pages.yml"]
+    paths: ["static/**", "functions/**", ".github/workflows/pages.yml"]
 
 jobs:
   deploy:
@@ -15,4 +15,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Run from the repository root so the private /stats Pages Functions
+          # in functions/ are compiled and uploaded with the static site.
+          wranglerVersion: "4.154.0"
           command: pages deploy static --project-name ibflip --branch ${{ github.ref_name }}

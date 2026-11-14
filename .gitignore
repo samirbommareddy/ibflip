@@ -22,3 +22,8 @@ screenshots/
 
 # Local design decisions and notes, readable by agents but never published
 .local/
+
+# Local Pages Functions secrets (written by scripts/stats-dev)
+.dev.vars
+.dev.vars.*
+node_modules/

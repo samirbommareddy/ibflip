@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Run the static site + private /stats Pages Functions locally with a local D1.
+# Usage: ./scripts/with-env ./scripts/stats-dev [port]
+# Reads STATS_INGEST_SECRET and STATS_DASHBOARD_PASSWORD from the environment
+# (root .env via with-env) and writes only those two to the Git-ignored
+# .dev.vars, which also stops wrangler from loading the whole root .env.
+set -euo pipefail
+
+WRANGLER_VERSION=4.154.0
+port="${1:-8788}"
+project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$project_root"
+
+for name in STATS_INGEST_SECRET STATS_DASHBOARD_PASSWORD; do
+    value="${!name:-}"
+    if [[ ${#value} -lt 16 ]]; then
+        echo "$name must be set (16+ characters) in .env for local stats development." >&2
+        exit 1
+    fi
+done
+
+umask 077
+{
+    printf 'STATS_INGEST_SECRET=%s\n' "$STATS_INGEST_SECRET"
+    printf 'STATS_DASHBOARD_PASSWORD=%s\n' "$STATS_DASHBOARD_PASSWORD"
+} > .dev.vars
+
+# Local-only database under .wrangler/ (Git-ignored); the schema is created on first use.
+exec npx --yes "wrangler@$WRANGLER_VERSION" pages dev static \
+    --d1 STATS_DB=ibflip-stats-local \
+    --persist-to .wrangler/state \
+    --compatibility-date 2026-10-01 \
+    --ip 127.0.0.1 --port "$port"

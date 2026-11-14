@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>IB-Flip Activity</title>
+<style>
+:root {
+  --paper: #fff; --surface: #f7f8fc; --panel: #fff; --text: #161a2b; --muted: #626a81;
+  --line: #dce0ed; --accent: #2d4bdf; --accent-soft: #edf0ff;
+  --s1: #2d4bdf; --s2: #eb6834; --s3: #1baf7a;
+  --grid: #e7e9f2; --shadow: 0 12px 44px #18245210;
+  --sans: "Helvetica Neue", Arial, ui-sans-serif, system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #111422; --surface: #0d101c; --panel: #171c2d; --text: #f1f3ff; --muted: #9da7c3;
+    --line: #30394e; --accent: #89a0ff; --accent-soft: #222d51;
+    --s1: #6a82f5; --s2: #d95926; --s3: #199e70; --grid: #232a3d; --shadow: 0 12px 44px #0003;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #111422; --surface: #0d101c; --panel: #171c2d; --text: #f1f3ff; --muted: #9da7c3;
+  --line: #30394e; --accent: #89a0ff; --accent-soft: #222d51;
+  --s1: #6a82f5; --s2: #d95926; --s3: #199e70; --grid: #232a3d; --shadow: 0 12px 44px #0003;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--text); font: 15px/1.45 var(--sans); }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+h1 span { color: var(--accent); }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.sub { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
+.controls { display: flex; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--panel); }
+.seg button, .icon { font: inherit; font-size: 13px; color: var(--text); background: transparent; border: 0; padding: 6px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--paper); }
+.icon { border: 1px solid var(--line); border-radius: 999px; background: var(--panel); font-size: 13px; padding: 6px 12px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+.tile { padding: 14px 16px; }
+.tile .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.tile .v { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile .n { color: var(--muted); font-size: 12px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 16px; margin-bottom: 16px; }
+.card { padding: 16px; min-width: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin: -4px 0 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--muted); font: 11px var(--sans); }
+.gridline { stroke: var(--grid); stroke-width: 1; }
+.hit { fill: transparent; cursor: default; }
+.hit:hover { fill: var(--accent-soft); opacity: 0.6; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+.scroll { overflow-x: auto; }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.bar { height: 8px; border-radius: 4px; background: var(--s1); }
+#tip { position: fixed; pointer-events: none; background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 10px; font-size: 12px; box-shadow: var(--shadow); display: none; z-index: 10; min-width: 140px; }
+#tip b { display: block; margin-bottom: 4px; }
+#tip div { display: flex; justify-content: space-between; gap: 12px; }
+#tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.note { color: var(--muted); font-size: 12px; margin-top: 16px; }
+#status { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>IB-Flip <span>activity</span></h1>
+      <p class="sub" id="status">Loading…</p>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Range">
+        <button data-days="7">7d</button><button data-days="30" aria-pressed="true">30d</button><button data-days="90">90d</button>
+      </div>
+      <button class="icon" id="theme" title="Toggle light/dark">Theme</button>
+    </div>
+  </header>
+  <section class="tiles" id="tiles"></section>
+  <section class="grid2">
+    <div class="card"><h2>Games per day</h2><div class="legend" id="lg-games"></div><div id="ch-games"></div></div>
+    <div class="card"><h2>Rooms created per day</h2><div class="legend" id="lg-rooms"></div><div id="ch-rooms"></div></div>
+    <div class="card"><h2>New players per day <span class="sub">(approximate)</span></h2><div id="ch-players"></div></div>
+    <div class="card"><h2>Peak concurrent players</h2><div id="ch-peak"></div></div>
+  </section>
+  <section class="grid2">
+    <div class="card"><h2>Table size</h2><div id="t-size"></div></div>
+    <div class="card"><h2>Humans vs bots</h2><div id="t-humans"></div></div>
+    <div class="card"><h2>Bot difficulty</h2><div id="t-bots"></div></div>
+    <div class="card"><h2>Game length (finished)</h2><div id="t-length"></div></div>
+  </section>
+  <section class="card"><h2>Daily detail</h2><div class="scroll" id="t-daily"></div></section>
+  <p class="note">Anonymous daily aggregates only — no names, addresses, room codes, chat or cards are collected.
+  Days are UTC. “Left early” means every human had left and the bots finished the game; “abandoned” means the room
+  expired or the server stopped mid-game. New players are counted per server process with a daily in-memory key, so a
+  server restart can count someone twice.</p>
+</main>
+<div id="tip" role="status"></div>
+<script>
+(() => {
+"use strict";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString("en-US"));
+const mins = (s) => (s == null ? "–" : `${(s / 60).toFixed(1)} min`);
+const NS = "http://www.w3.org/2000/svg";
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
+};
+
+// Theme: follow the OS unless toggled; remembered per browser only.
+const applyTheme = (t) => (t ? document.documentElement.setAttribute("data-theme", t) : document.documentElement.removeAttribute("data-theme"));
+applyTheme(store.get("stats-theme"));
+$("#theme").addEventListener("click", () => {
+  const dark = getComputedStyle(document.documentElement).getPropertyValue("--paper").trim() !== "#fff";
+  const next = dark ? "light" : "dark";
+  store.set("stats-theme", next);
+  applyTheme(next);
+});
+
+let days = Number(store.get("stats-days")) || 30;
+let data = null;
+
+function dayList(from, to) {
+  const out = [];
+  for (let t = Date.parse(`${from}T00:00:00Z`); t <= Date.parse(`${to}T00:00:00Z`); t += 86400000) out.push(new Date(t).toISOString().slice(0, 10));
+  return out;
+}
+
+function model(raw) {
+  const byDay = {};
+  const totals = {};
+  const add = (obj, key, n) => (obj[key] = (obj[key] || 0) + n);
+  for (const [day, metric, dim, n] of raw.counters) {
+    const d = (byDay[day] ||= {});
+    add(d, metric, n);
+    add(d, `${metric}:${dim}`, n);
+    add(totals, metric, n);
+    add(totals, `${metric}:${dim}`, n);
+  }
+  const peaks = {};
+  for (const [day, metric, value] of raw.peaks) {
+    (peaks[day] ||= {})[metric] = value;
+    totals[`max:${metric}`] = Math.max(totals[`max:${metric}`] || 0, value);
+  }
+  return { days: dayList(raw.from, raw.to), byDay, totals, peaks };
+}
+
+const tip = $("#tip");
+function showTip(ev, html) {
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - 14;
+  tip.style.left = `${Math.max(8, x)}px`;
+  tip.style.top = `${Math.max(8, y)}px`;
+}
+const hideTip = () => (tip.style.display = "none");
+
+function el(name, attrs = {}, parent) {
+  const node = document.createElementNS(NS, name);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (parent) parent.appendChild(node);
+  return node;
+}
+
+// Integer tick step (counts): 1, 2, 5, 10, 20, 50, ... so that 4 steps cover v.
+function tickStep(v) {
+  const raw = Math.max(1, v / 4);
+  const p = 10 ** Math.floor(Math.log10(raw));
+  for (const m of [1, 2, 5, 10]) if (m * p >= raw) return Math.max(1, Math.round(m * p));
+  return 10 * p;
+}
+
+const shortDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+// Stacked (or single-series) daily bars with a per-day hover tooltip.
+function barChart(target, legendTarget, series, valueOf) {
+  const root = $(target);
+  root.textContent = "";
+  if (legendTarget) {
+    $(legendTarget).innerHTML = series.map((s) => `<span><i style="background:var(${s.color})"></i>${esc(s.label)}</span>`).join("");
+  }
+  const list = data.days;
+  const values = list.map((d) => series.map((s) => valueOf(d, s.key) || 0));
+  const step0 = tickStep(Math.max(0, ...values.map((v) => v.reduce((a, b) => a + b, 0))));
+  const max = step0 * 4;
+  const W = 520, H = 200, L = 34, R = 6, T = 8, B = 22;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": series.map((s) => s.label).join(", ") }, root);
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  for (let i = 0; i <= 4; i++) {
+    const v = step0 * i;
+    el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "gridline" }, svg);
+    el("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = fmt(v);
+  }
+  const hits = el("g", {}, svg); // hover targets sit behind the bars...
+  const bars = el("g", { "pointer-events": "none" }, svg); // ...which let the pointer through
+  const step = (W - L - R) / list.length;
+  const bw = Math.max(2, Math.min(18, step * 0.7));
+  const labelEvery = Math.ceil(list.length / 6);
+  list.forEach((day, i) => {
+    const cx = L + step * (i + 0.5);
+    let acc = 0;
+    values[i].forEach((v, k) => {
+      if (!v) return;
+      const top = y(acc + v), bottom = y(acc);
+      const gap = acc > 0 ? 1 : 0; // 2px surface gap between stacked segments (1px each side)
+      const isTop = values[i].slice(k + 1).every((x) => !x);
+      const h = Math.max(1, bottom - top - gap);
+      const r = isTop ? Math.min(4, bw / 2, h) : 0;
+      const x0 = cx - bw / 2, y0 = top, y1 = top + h;
+      el("path", {
+        d: r
+          ? `M${x0},${y1}V${y0 + r}Q${x0},${y0} ${x0 + r},${y0}H${x0 + bw - r}Q${x0 + bw},${y0} ${x0 + bw},${y0 + r}V${y1}Z`
+          : `M${x0},${y1}V${y0}H${x0 + bw}V${y1}Z`,
+        fill: `var(${series[k].color})`,
+      }, bars);
+      acc += v;
+    });
+    if (i % labelEvery === 0) el("text", { x: cx, y: H - 6, "text-anchor": "middle" }, svg).textContent = shortDay(day);
+    const hit = el("rect", { x: L + step * i, y: T, width: step, height: H - T - B, class: "hit" }, hits);
+    const rows = series.map((s, k) => `<div><span><i style="background:var(${s.color})"></i>${esc(s.label)}</span><span>${fmt(values[i][k])}</span></div>`).join("");
+    hit.addEventListener("mousemove", (ev) => showTip(ev, `<b>${esc(shortDay(day))}</b>${rows}`));
+    hit.addEventListener("mouseleave", hideTip);
+  });
+}
+
+function share(rows, total) {
+  if (!rows.length) return `<p class="empty">No games in this range.</p>`;
+  return `<table><thead><tr><th></th><th>Games</th><th>Share</th><th style="width:35%"></th></tr></thead><tbody>${rows
+    .map(([label, n]) => {
+      const pct = total ? (100 * n) / total : 0;
+      return `<tr><td>${esc(label)}</td><td>${fmt(n)}</td><td>${pct.toFixed(0)}%</td><td><div class="bar" style="width:${pct.toFixed(1)}%"></div></td></tr>`;
+    })
+    .join("")}</tbody></table>`;
+}
+
+function pick(prefix) {
+  return Object.entries(data.totals)
+    .filter(([k]) => k.startsWith(`${prefix}:`))
+    .map(([k, n]) => [k.slice(prefix.length + 1), n]);
+}
+
+function render() {
+  const t = data.totals;
+  const finished = t.games_finished || 0;
+  const ended = finished + (t.games_unattended || 0) + (t.games_abandoned || 0);
+  const tiles = [
+    ["Rooms created", fmt(t.rooms_created || 0), `${fmt(t["rooms_created:solo"] || 0)} vs bots · ${fmt(t["rooms_created:friends"] || 0)} with friends`],
+    ["Games started", fmt(t.games_started || 0), `${fmt(t["bot_seats"] || 0)} bot seats filled`],
+    ["Finished", fmt(finished), ended ? `${((100 * finished) / ended).toFixed(0)}% of ended games` : "–"],
+    ["Left early / abandoned", `${fmt(t.games_unattended || 0)} / ${fmt(t.games_abandoned || 0)}`, "bots finished / room lost"],
+    ["Avg game length", finished ? mins((t.game_seconds || 0) / finished) : "–", "finished games"],
+    ["New players", fmt(t.new_players || 0), "approximate, summed daily"],
+    ["Peak concurrent", fmt(t["max:peak_players"] || 0), `players · ${fmt(t["max:peak_active_rooms"] || 0)} active rooms`],
+  ];
+  $("#tiles").innerHTML = tiles.map(([k, v, n]) => `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="n">${esc(n)}</div></div>`).join("");
+
+  const day = (d, k) => (data.byDay[d] || {})[k];
+  barChart("#ch-games", "#lg-games", [
+    { key: "games_finished", label: "Finished", color: "--s1" },
+    { key: "games_unattended", label: "Left early", color: "--s2" },
+    { key: "games_abandoned", label: "Abandoned", color: "--s3" },
+  ], day);
+  barChart("#ch-rooms", "#lg-rooms", [
+    { key: "rooms_created:solo", label: "Vs bots", color: "--s1" },
+    { key: "rooms_created:friends", label: "With friends", color: "--s2" },
+  ], day);
+  barChart("#ch-players", null, [{ key: "new_players", label: "New players", color: "--s1" }], day);
+  barChart("#ch-peak", null, [{ key: "peak_players", label: "Peak players", color: "--s1" }], (d, k) => (data.peaks[d] || {})[k]);
+
+  const started = pick("games_started");
+  const total = t.games_started || 0;
+  const bySize = {}, byHumans = {};
+  for (const [dim, n] of started) {
+    const [p, h] = dim.split("-");
+    const seats = Number.parseInt(p, 10), humans = Number.parseInt(h, 10);
+    bySize[`${seats} players`] = (bySize[`${seats} players`] || 0) + n;
+    const label = humans === 1 ? `Solo + ${seats - 1} bot${seats > 2 ? "s" : ""}` : `${humans} humans + ${seats - humans} bot${seats - humans === 1 ? "" : "s"}`;
+    byHumans[label] = (byHumans[label] || 0) + n;
+  }
+  const sorted = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]);
+  $("#t-size").innerHTML = share(sorted(bySize).sort((a, b) => a[0].localeCompare(b[0])), total);
+  $("#t-humans").innerHTML = share(sorted(byHumans), total);
+
+  const NAMES = { easy: "Rookie", medium: "Regular", hard: "Shark" };
+  const seatRows = ["easy", "medium", "hard"].map((l) => [NAMES[l], t[`bot_seats:${l}`] || 0]);
+  const seatTotal = seatRows.reduce((a, r) => a + r[1], 0);
+  const mix = sorted(Object.fromEntries(pick("bot_mix").map(([d, n]) => [d === "none" ? "No bots" : d.split("+").map((l) => NAMES[l]).join(" + "), n])));
+  $("#t-bots").innerHTML = seatTotal
+    ? `${share(seatRows, seatTotal).replace("<th>Games</th>", "<th>Bot seats</th>")}<h2 style="margin-top:14px">Difficulty mix per game</h2>${share(mix, total)}`
+    : share([], 0);
+
+  const order = ["lt5m", "5-10m", "10-20m", "20-40m", "40m+"];
+  const LEN = { lt5m: "Under 5 min", "5-10m": "5–10 min", "10-20m": "10–20 min", "20-40m": "20–40 min", "40m+": "40+ min" };
+  $("#t-length").innerHTML = share(order.map((k) => [LEN[k], t[`game_duration:${k}`] || 0]).filter((r) => r[1]), finished);
+
+  const cols = [
+    ["Day", (d) => shortDay(d)],
+    ["Rooms (bots / friends)", (d) => `${fmt(day(d, "rooms_created:solo") || 0)} / ${fmt(day(d, "rooms_created:friends") || 0)}`],
+    ["Started", (d) => fmt(day(d, "games_started") || 0)],
+    ["Finished", (d) => fmt(day(d, "games_finished") || 0)],
+    ["Left early", (d) => fmt(day(d, "games_unattended") || 0)],
+    ["Abandoned", (d) => fmt(day(d, "games_abandoned") || 0)],
+    ["Avg length", (d) => (day(d, "games_finished") ? mins(day(d, "game_seconds") / day(d, "games_finished")) : "–")],
+    ["New players", (d) => fmt(day(d, "new_players") || 0)],
+    ["Peak players", (d) => fmt((data.peaks[d] || {}).peak_players ?? 0)],
+    ["Peak rooms", (d) => fmt((data.peaks[d] || {}).peak_active_rooms ?? 0)],
+  ];
+  const rows = [...data.days].reverse().filter((d) => data.byDay[d] || data.peaks[d]);
+  $("#t-daily").innerHTML = rows.length
+    ? `<table><thead><tr>${cols.map(([h]) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows
+        .map((d) => `<tr>${cols.map(([, f]) => `<td>${esc(f(d))}</td>`).join("")}</tr>`)
+        .join("")}</tbody></table>`
+    : `<p class="empty">No activity recorded in this range yet.</p>`;
+}
+
+async function load() {
+  document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.days) === days)));
+  $("#status").textContent = "Loading…";
+  try {
+    const res = await fetch(`/stats/data?days=${days}`, { credentials: "same-origin", cache: "no-store" });
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    const raw = await res.json();
+    data = model(raw);
+    const last = raw.last_ingest ? new Date(raw.last_ingest) : null;
+    $("#status").textContent = `${shortDay(raw.from)} – ${shortDay(raw.to)} (UTC) · last data from the game server: ${
+      last ? last.toLocaleString() : "never"
+    }`;
+    render();
+  } catch (err) {
+    $("#status").textContent = `Could not load stats: ${err.message}`;
+  }
+}
+
+document.querySelectorAll(".seg button").forEach((b) =>
+  b.addEventListener("click", () => {
+    days = Number(b.dataset.days);
+    store.set("stats-days", String(days));
+    load();
+  }),
+);
+addEventListener("resize", hideTip);
+load();
+})();
+</script>
+</body>
+</html>

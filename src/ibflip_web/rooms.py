@@ -29,6 +29,7 @@ from ibflip.ai.agents import (
 from ibflip.ai.observation import compact_legal, encode, is_forced, resolve_forced
 from ibflip.state import Phase
 
+from ibflip_web import stats
 from ibflip_web.serialize import serialize_event, serialize_view
 
 log = logging.getLogger("ibflip_web")
@@ -272,6 +273,7 @@ class Room:
     agents: dict[int, Any] = field(default_factory=dict)
     chat: list[dict[str, Any]] = field(default_factory=list)
     last_remove: tuple[int, int, float] | None = None
+    stats_game: stats.GameShape | None = None  # anonymous shape of the running game
 
     # ------------------------------------------------------------------ seats
     def seat_by_token(self, token: str | None) -> int | None:
@@ -425,6 +427,7 @@ class Room:
             self._ready_with_full_slots(index)
         self.status = "fixing"
         self.turn_started = time.time()
+        self._stats_game_started()
         self._after_fixing_check()
         self.touch()
 
@@ -438,6 +441,29 @@ class Room:
         if not all(self.engine.state.players[index].face_up_slots):
             self.engine.fix_fill_empty_slots(index)
         self.engine.fix_done(index)
+
+    # ------------------------------------------------------------------ stats
+    def _stats_game_started(self) -> None:
+        try:
+            self.stats_end_game("abandoned")  # defensive: a previous game never ended
+            self.stats_game = stats.GameShape(
+                seats=len(self.seats),
+                humans=sum(1 for s in self.seats if s.kind == "human"),
+                levels=[s.level for s in self.seats if s.kind == "bot"],
+                started=time.time(),
+            )
+            stats.STATS.game_started(self.stats_game)
+        except Exception:  # noqa: BLE001 - tracking never breaks a game
+            log.debug("stats hook failed", exc_info=True)
+
+    def stats_end_game(self, outcome: str) -> None:
+        """Record how the running game ended (once); outcome finished|unattended|abandoned."""
+        try:
+            shape, self.stats_game = self.stats_game, None
+            if shape is not None:
+                stats.STATS.game_ended(shape, outcome)
+        except Exception:  # noqa: BLE001
+            log.debug("stats hook failed", exc_info=True)
 
     def _after_fixing_check(self) -> None:
         assert self.engine is not None
@@ -490,6 +516,8 @@ class Room:
             # The game runs until everyone is placed; 1st place gets the win.
             if engine.state.winner is not None:
                 self.seats[engine.state.winner].wins += 1
+            present = any(s.kind == "human" and s.connected and not s.left for s in self.seats)
+            self.stats_end_game("finished" if present else "unattended")
 
     def _require_engine(self) -> IBFlipEngine:
         if self.engine is None:
@@ -732,6 +760,7 @@ class RoomRegistry:
         return room
 
     def discard(self, room: Room) -> None:
+        room.stats_end_game("abandoned")
         if self.rooms.get(room.code) is room:
             del self.rooms[room.code]
         if room.runner is not None:
@@ -751,8 +780,24 @@ class RoomRegistry:
             room.lock = asyncio.Lock()
         room.runner = loop.create_task(room.run())
 
+    def stats_sample(self) -> tuple[int, int, int]:
+        """(open rooms, rooms with a connected human, connected humans)."""
+        rooms = list(self.rooms.values())
+        active = players = 0
+        for room in rooms:
+            here = sum(1 for s in room.seats if s.kind == "human" and s.connected)
+            players += here
+            active += 1 if here else 0
+        return len(rooms), active, players
+
+    def stats_shutdown(self) -> None:
+        """The server is stopping: every running game is lost."""
+        for room in list(self.rooms.values()):
+            room.stats_end_game("abandoned")
+
     def ensure_gc(self) -> None:
         """Start the periodic garbage collector on the running loop (idempotent)."""
+        stats.STATS.ensure_running(self.stats_sample)
         loop = asyncio.get_running_loop()
         if self.gc_task is not None and not self.gc_task.done() and self.gc_task.get_loop() is loop:
             return
@@ -770,5 +815,6 @@ class RoomRegistry:
         now = time.time()
         for code in [c for c, r in self.rooms.items() if r.expired(now)]:
             room = self.rooms.pop(code)
+            room.stats_end_game("abandoned")
             if room.runner:
                 room.runner.cancel()

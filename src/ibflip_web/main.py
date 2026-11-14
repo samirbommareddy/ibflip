@@ -29,6 +29,7 @@ import logging
 import math
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,7 @@ from pydantic import BaseModel, Field
 from ibflip import IllegalActionError
 from ibflip.actions import ACTION_SPACE_SIZE
 from ibflip.ai.agents import model_available
+from ibflip_web import stats
 from ibflip_web.rooms import (
     BOT_LEVELS,
     MAX_SEATS,
@@ -55,7 +57,18 @@ from ibflip_web.rooms import (
 
 log = logging.getLogger("ibflip_web")
 
-app = FastAPI(title="IB-Flip")
+registry = RoomRegistry()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    # Render stops idle free instances: count lost games and send what we have.
+    registry.stats_shutdown()
+    await stats.STATS.aclose()
+
+
+app = FastAPI(title="IB-Flip", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -64,7 +77,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-registry = RoomRegistry()
 STATIC_DIR = Path(__file__).resolve().parents[2] / "static"
 ALLOWED_EMOTES = {"👏", "😂", "😱", "🔥", "😤", "🤝", "👀", "💀"}
 FIX_OPS = {"swap", "stack", "unstack", "done"}
@@ -146,6 +158,8 @@ async def create_room(body: CreateRoom, request: Request) -> dict[str, Any]:
     except RoomsFullError as exc:
         raise HTTPException(503, str(exc)) from exc
     seat, token = room.add_human(clean_name(body.name))
+    stats.STATS.room_created(with_bots=bool(body.bots))
+    stats.STATS.player_seen(client_ip(request))
     for level in body.bots:
         room.add_bot(level if level in BOT_LEVELS else "medium")
     if body.autostart:
@@ -167,6 +181,7 @@ async def join_room(code: str, body: JoinRoom, request: Request) -> dict[str, An
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         await room.broadcast()
+    stats.STATS.player_seen(client_ip(request))
     registry.ensure_runner(room)
     return {"code": room.code, "token": token, "seat": seat}
 

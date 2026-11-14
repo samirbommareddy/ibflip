@@ -85,6 +85,9 @@ them leaves Modal unauthenticated rather than falling back to another account.
   the workspace and expiry with the read-only token info command below.
 - `IBFLIP_MODAL_CPU`: optional training container size, default 64. It does
   not limit spending. Do not start training to test credentials.
+- `STATS_INGEST_URL`, `STATS_INGEST_SECRET`, `STATS_DASHBOARD_PASSWORD`:
+  optional private activity stats; leave empty to disable. See
+  `docs/usage-stats.md` and `./scripts/with-env ./scripts/stats-dev`.
 - `TRUSTED_PROXY_HOPS=0`: appropriate for direct local access; do not copy
   this setting to the Render environment, where the application defaults to 1.
 

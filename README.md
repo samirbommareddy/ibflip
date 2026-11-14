@@ -136,3 +136,7 @@ Then copy `runs/<name>/actor_latest.npz` to `src/ibflip/ai/model.npz`.
   `./scripts/with-env npx wrangler pages deploy static --project-name ibflip --branch main`.
   The client talks to the API URL in the `ibflip-api` meta tag of
   `static/index.html`.
+- **Private activity stats** (optional, off unless configured): the backend
+  sends anonymous daily counters to Pages Functions in `functions/` backed by
+  Cloudflare D1, and the owner views them at `/stats` (password protected).
+  See `docs/usage-stats.md` for the privacy contract and setup checklist.
