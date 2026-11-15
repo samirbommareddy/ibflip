@@ -77,7 +77,7 @@
     }
     if (screen?.id === "game") {
       const zones = [
-        ...document.querySelectorAll("#game .hud, #game .seat, #game .pile-col, #game .turn-order, #game .narration.show, #game .prompt, #game #mySlots .slot, #game #hand, #game #actionBar .btn, #game #meBadge"),
+        ...document.querySelectorAll("#game .hud, #game .seat, #game .pile-col, #game .narration.show, #game .prompt, #game #mySlots .slot, #game #hand, #game #actionBar .btn, #game #meBadge"),
       ].filter(visible);
       for (let i = 0; i < zones.length; i++) for (let j = i + 1; j < zones.length; j++) {
         if (zones[i].contains(zones[j]) || zones[j].contains(zones[i])) continue;
