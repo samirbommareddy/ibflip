@@ -289,8 +289,11 @@ function codeError(m) {
 // A slow request (the free server sleeps when idle) shows on the button
 // that started it.
 async function api(path, body, btn = null) {
+  if (btn && btn.offsetParent === null) btn = null; // hidden: nothing to label
   const label = btn?.textContent;
-  const slow = setTimeout(() => { if (btn) btn.textContent = WAKING; }, 1800);
+  // The plain Join button is narrow: it gets the short form.
+  const waking = btn && btn.offsetWidth < 200 ? "Starting server" : WAKING;
+  const slow = setTimeout(() => { if (btn) btn.textContent = waking; }, 1800);
   let res;
   try {
     res = await fetch(`${API}${path}`, {
@@ -302,7 +305,7 @@ async function api(path, body, btn = null) {
     throw new Error("Can't reach the game server. Check your connection and try again.");
   } finally {
     clearTimeout(slow);
-    if (btn && btn.textContent === WAKING) btn.textContent = label;
+    if (btn && btn.textContent === waking) btn.textContent = label;
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(friendlyError(typeof data.detail === "string" ? data.detail : res.statusText || "Request failed"));
@@ -326,21 +329,21 @@ function roomLost() {
 }
 function hideLost() { $("#lostNotice").classList.add("hidden"); }
 function busyHome(on) { $$("#home .btn").forEach((b) => (b.disabled = on)); }
-async function quickPlay(e) {
+async function quickPlay() {
   Sound.unlock();
   hideLost();
   busyHome(true); homeError("");
   try {
     const n = Number(segVal("botCount") || 3), level = segVal("botLevel") || "medium";
-    const r = await api("/api/rooms", { name: playerName(), bots: Array(n).fill(level), autostart: true }, e?.currentTarget || null);
+    const r = await api("/api/rooms", { name: playerName(), bots: Array(n).fill(level), autostart: true }, $("#quickPlay"));
     enterRoom(r, true);
   } catch (err) { homeError(err.message); } finally { busyHome(false); }
 }
-async function createRoom(e) {
+async function createRoom() {
   Sound.unlock();
   hideLost();
   busyHome(true); homeError(""); codeError("");
-  try { enterRoom(await api("/api/rooms", { name: playerName() }, e?.currentTarget || null)); }
+  try { enterRoom(await api("/api/rooms", { name: playerName() }, $("#createRoom"))); }
   catch (err) { homeError(err.message); } finally { busyHome(false); }
 }
 const normCode = (c) => String(c || "").replace(/[^a-z]/gi, "").toUpperCase();
