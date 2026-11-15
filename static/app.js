@@ -907,8 +907,9 @@ function renderMe() {
 function handLayout(hand, n) {
   const cw = hand.querySelector(".card")?.offsetWidth || 80;
   const avail = Math.max(160, hand.clientWidth - 24);
-  // Cards overlap a little, and more when the row would not fit.
-  const margin = n > 1 ? Math.min(-cw * 0.06, (avail - n * cw) / (2 * n)) : 0;
+  // Cards overlap a little, and more when the row would not fit: n cards
+  // with margin m on each side span (n - 1) * (cw + 2m) + cw.
+  const margin = n > 1 ? Math.min(-cw * 0.06, (avail - n * cw) / (2 * (n - 1))) : 0;
   return { margin };
 }
 

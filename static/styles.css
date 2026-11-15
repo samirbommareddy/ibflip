@@ -702,6 +702,14 @@ a {
 .live-col .pile {
   width: calc(var(--pile-card-w) * 2.2);
 }
+/* The label sits under the top card, not under the whole fan. */
+.live-col {
+  align-items: flex-end;
+}
+.live-col .pile-label {
+  width: var(--pile-card-w);
+  text-align: center;
+}
 .live-pile .card {
   left: auto;
   right: 0;
@@ -2065,21 +2073,20 @@ kbd {
     margin: 0.4rem 0;
     padding: 0.4rem 0.75rem;
   }
-  /* Your table and the actions share a row; the hand gets its own. */
+  /* Your table and the actions share a row (the actions wrap below when
+     there is no room); the hand gets a row of its own. */
   .me-main {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: "left actions" "hand hand";
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
     align-items: center;
     gap: 0.4rem 0.75rem;
-  }
-  .me-left {
-    justify-self: start;
   }
   .me-badge {
     display: none;
   }
   .action-bar {
-    justify-self: end;
+    flex: 1 1 auto;
     flex-direction: row;
     flex-wrap: wrap;
     justify-content: flex-end;
@@ -2091,7 +2098,8 @@ kbd {
     padding: 0.5rem 0.75rem;
   }
   .hand {
-    justify-self: stretch;
+    order: 3;
+    flex: 1 1 100%;
     width: 100%;
     height: calc(var(--card-h) + 0.75rem);
     padding-top: 0.6rem;
@@ -2160,6 +2168,7 @@ kbd {
 }
 @media (max-height: 640px) and (min-width: 520px) {
   .me-main {
+    display: grid;
     grid-template-columns: 1fr minmax(0, auto) 1fr;
     grid-template-areas: "left hand actions";
     align-items: end;
@@ -2168,6 +2177,7 @@ kbd {
     justify-self: end;
   }
   .hand {
+    order: 0;
     justify-self: center;
     width: calc(var(--n, 1) * var(--card-w) * 0.88 + var(--card-w) * 0.12 + 1rem);
   }
