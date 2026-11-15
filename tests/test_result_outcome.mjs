@@ -28,7 +28,7 @@ function* endings(n) {
     }
   }
 }
-function place(n, finishers, kinds) {
+function place(n, finishers, kinds, { partial = false } = {}) {
   const players = Array.from({ length: n }, () => ({ place: null, finish: null, face_up: [[], [], []], hand: [] }));
   const free = () => { const taken = new Set(players.map((p) => p.place)); return [...Array(n).keys()].map((k) => k + 1).filter((k) => !taken.has(k)); };
   finishers.forEach((i, k) => {
@@ -41,11 +41,13 @@ function place(n, finishers, kinds) {
       players[i].place = n;
     }
   });
+  // Mid-game: nobody else has a place yet and the game is still running.
+  if (partial) return { status: "playing", winner: null, loser: null, players };
   const left = players.findIndex((p) => p.place === null);
   players[left].place = free()[0];
   assert.deepEqual(players.map((p) => p.place).sort((x, y) => x - y), [...Array(n).keys()].map((k) => k + 1));
   const winner = players.findIndex((p) => p.place === 1), loser = players.findIndex((p) => p.place === n);
-  return { status: "over", winner, loser, players };
+  return { status: "over", winner, loser, players, __order: finishers };
 }
 
 test("results: title, text, sound and confetti agree for every finish at 2 to 5 players", () => {
@@ -107,4 +109,55 @@ test("results text uses plain names (it is set as text, so no HTML escaping)", (
   c.T.S.room = { host: 0, seats: [{ name: "Me" }, { name: "Tom & Jo" }, { name: "Bot" }] };
   c.T.S.seat = 0; c.T.S.game = g;
   assert.deepEqual({ ...c.T.resultOutcome(g) }, { title: "You finished 2nd", text: "Tom & Jo finished 1st.", mood: "even" });
+});
+
+// Bug: the in-game prompt said "You finished 4th." and the results screen
+// "You finished 3rd" (5 players). An illegal finisher's place can still move
+// up when someone later flips the 8s, so a place named mid-game must be the
+// place the game ends with. Steps through every finishing order the way the
+// engine places players and checks every intermediate state.
+test("in-game finish lines never name a place that later changes", () => {
+  const c = loadClient();
+  const ORD = /(\d+)(st|nd|rd|th)|\blast\b|Last place/;
+  let checked = 0;
+  for (let n = 2; n <= 5; n++) {
+    c.T.S.room = { host: 0, seats: Array.from({ length: n }, (_, i) => ({ name: `P${i}`, wins: 0 })) };
+    for (const final of endings(n)) {
+      // Rebuild the same game one finisher at a time.
+      const seq = final.__order;
+      for (let k = 1; k < seq.length; k++) {
+        const g = place(n, seq.slice(0, k), seq.slice(0, k).map((i) => final.players[i].finish), { partial: true });
+        for (let seat = 0; seat < n; seat++) {
+          const p = g.players[seat];
+          if (p.place === null) continue;
+          c.T.S.seat = seat; c.T.S.game = g;
+          for (const line of [c.T.finishedLine(g), c.T.finishText(seat, p, n, g)]) {
+            const m = line.match(ORD);
+            if (!m) continue;
+            checked++;
+            const named = m[1] ? Number(m[1]) : n;
+            assert.equal(named, final.players[seat].place, `${n}p seat ${seat}: "${line}" mid-game, final place ${final.players[seat].place}`);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(checked > 100, `only ${checked} lines checked`);
+});
+
+test("the reported 5-player case: illegal 4th, then an 8s flip makes it 3rd", () => {
+  const c = loadClient();
+  c.T.S.room = { host: 0, seats: Array.from({ length: 5 }, (_, i) => ({ name: `P${i}`, wins: 0 })) };
+  c.T.S.seat = 0;
+  const mid = place(5, [1, 0], ["illegal", "illegal"], { partial: true });
+  assert.equal(mid.players[0].place, 4);
+  c.T.S.game = mid;
+  assert.doesNotMatch(c.T.finishedLine(mid), /4th|3rd/);
+  const later = place(5, [1, 0, 2], ["illegal", "illegal", "eights"], { partial: true });
+  assert.equal(later.players[0].place, 3);
+  const over = { ...later, status: "over" };
+  over.players[3].place = 1; over.players[4].place = 2;
+  c.T.S.game = over;
+  assert.equal(c.T.resultOutcome(over).title, "You finished 3rd");
+  assert.equal(c.T.finishedLine(over), "You finished 3rd.");
 });

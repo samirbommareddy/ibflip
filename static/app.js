@@ -108,7 +108,9 @@ const Sound = (() => {
     bus.connect(lp).connect(comp).connect(ctx.destination);
     return ctx;
   };
-  const ok = () => S.sound && !document.hidden;
+  // A context made before any gesture starts "suspended"; sounds scheduled
+  // then would all play at once when it resumes, so skip them instead.
+  const ok = () => S.sound && !document.hidden && ac().state === "running";
   function env(g, t, peak, attack, dur) {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(peak, t + attack);
@@ -144,7 +146,8 @@ const Sound = (() => {
     turn: () => { tone(659, 0.35, { gain: 0.03 }); tone(988, 0.45, { when: 0.09, gain: 0.022 }); },
     bad: () => { tone(330, 0.35, { gain: 0.03, type: "triangle" }); tone(247, 0.5, { when: 0.12, gain: 0.028, type: "triangle" }); },
     win: () => [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.5, { when: i * 0.1, gain: 0.03, type: "triangle" })),
-    unlock: () => { try { if (S.sound) ac().resume(); } catch (_) {} },
+    unlock: () => { try { if (S.sound && ac().state !== "running") ac().resume(); } catch (_) {} },
+    state: () => (ctx ? ctx.state : "none"),
   };
 })();
 
@@ -176,7 +179,15 @@ function toast(html, cls = "") {
   const stack = $("#toasts");
   stack.prepend(el);
   while (stack.children.length > 5) stack.lastChild.remove();
-  setTimeout(() => { el.classList.add("leaving"); setTimeout(() => el.remove(), 400); }, 5200);
+  // Stays while hovered or focused; leaves 5 s after the last of either.
+  let timer = 0;
+  const start = () => { clearTimeout(timer); timer = setTimeout(() => { el.classList.add("leaving"); setTimeout(() => el.remove(), 400); }, 5200); };
+  const hold = () => clearTimeout(timer);
+  el.addEventListener("pointerenter", hold);
+  el.addEventListener("pointerleave", () => { if (!el.contains(document.activeElement)) start(); });
+  el.addEventListener("focusin", hold);
+  el.addEventListener("focusout", () => { if (!el.matches(":hover")) start(); });
+  start();
 }
 function callout(text, bad = false) {
   const el = $("#callout");
@@ -206,14 +217,23 @@ function placeLabel(p, n) {
   if (!hasPlace(p)) return "";
   return p.place === n && finishOf(p) !== "legal" ? "Last" : ordinal(p.place);
 }
-function finishText(i, p, n) {
+// A legal finisher's place never changes. An illegal or 8s finisher's place
+// can still move up while the game runs (a later 8s flip takes last place
+// and moves earlier bottom finishers up one, engine.py _finish_player), so
+// it is only named once the game is over.
+const placeFinal = (p, g) => g?.status === "over" || finishOf(p) === "legal";
+function finishText(i, p, n, g) {
   const who = nameOf(i), f = finishOf(p);
-  const last = p.place === n;
-  const where = last ? "last place" : `${ordinal(p.place)} place`;
-  const Where = where[0].toUpperCase() + where.slice(1);
-  if (f === "eights") return `${who} flipped the 8s. ${Where}.`;
-  if (f === "illegal") return `${who} finished illegally. ${Where}.`;
+  const where = placeFinal(p, g) ? ` ${p.place === n ? "Last place" : `${ordinal(p.place)} place`}.` : "";
+  if (f === "eights") return `${who} flipped the 8s.${where}`;
+  if (f === "illegal") return `${who} finished illegally.${where}`;
   return `${who} finished ${ordinal(p.place)}.`;
+}
+// The prompt line once you are out of a running game.
+function finishedLine(g) {
+  const me = g.players[S.seat], f = finishOf(me);
+  if (!placeFinal(me, g)) return f === "eights" ? "You flipped the 8s. Your place is settled when the game ends." : "You finished illegally. Your place is settled when the game ends.";
+  return `You finished ${placeLabel(me, g.players.length) === "Last" ? "last" : ordinal(me.place)}.`;
 }
 
 // ================================================================== HOME
@@ -237,7 +257,11 @@ function initHome() {
   $("#createRoom").addEventListener("click", createRoom);
   $("#joinRoom").addEventListener("click", () => joinRoom($("#codeInput").value));
   $("#codeInput").addEventListener("keydown", (e) => e.key === "Enter" && joinRoom(e.target.value));
-  $("#codeInput").addEventListener("input", (e) => { const v = e.target.value.toUpperCase(); if (v !== e.target.value) e.target.value = v; });
+  $("#codeInput").addEventListener("input", (e) => {
+    const v = e.target.value.toUpperCase(); if (v !== e.target.value) e.target.value = v;
+    codeError("");
+    if (normCode(v) !== $("#joinRoom").dataset.invite) inviteMode(null);
+  });
   $("#nameInput").addEventListener("change", (e) => store.set("ibflip:name", e.target.value.trim()));
 }
 const segVal = (id) => $(`#${id} button.on`)?.dataset.v;
@@ -247,11 +271,28 @@ function playerName() {
   return n || "You";
 }
 const EXPIRED = "That room has closed. Start a new game or create a new room.";
-const WAKING = "Starting the game server. This can take about 30 seconds.";
-const friendlyError = (m) => (/room not found/i.test(m || "") ? EXPIRED : m);
-async function api(path, body) {
-  const note = $("#serverNote");
-  const slow = setTimeout(() => (note.textContent = WAKING), 1800);
+const WAKING = "Starting the server, about 30 seconds";
+const SERVER_TEXT = [
+  [/room not found/i, EXPIRED],
+  [/no room with that code/i, "No room has that code. Check it, or ask for a new link."],
+  [/room is full/i, "That room is full. Ask the host to free a seat, or create your own room."],
+  [/already in progress/i, "That game has already started. Try again when it is back in the lobby, or create your own room."],
+  [/not a member/i, "You are no longer in that room. Join again with the code, or start a new game."],
+];
+const friendlyError = (m) => (SERVER_TEXT.find(([re]) => re.test(m || "")) || [null, m])[1];
+const homeError = (m) => { $("#homeError").textContent = m || ""; };
+function codeError(m) {
+  $("#codeError").textContent = m || "";
+  if (m) $("#codeInput").setAttribute("aria-invalid", "true"); else $("#codeInput").removeAttribute("aria-invalid");
+}
+// A slow request (the free server sleeps when idle) shows on the button
+// that started it.
+async function api(path, body, btn = null) {
+  if (btn && btn.offsetParent === null) btn = null; // hidden: nothing to label
+  const label = btn?.textContent;
+  // The plain Join button is narrow: it gets the short form.
+  const waking = btn && btn.offsetWidth < 200 ? "Starting server" : WAKING;
+  const slow = setTimeout(() => { if (btn) btn.textContent = waking; }, 1800);
   let res;
   try {
     res = await fetch(`${API}${path}`, {
@@ -263,7 +304,7 @@ async function api(path, body) {
     throw new Error("Can't reach the game server. Check your connection and try again.");
   } finally {
     clearTimeout(slow);
-    if (note.textContent === WAKING) note.textContent = "";
+    if (btn && btn.textContent === waking) btn.textContent = label;
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(friendlyError(typeof data.detail === "string" ? data.detail : res.statusText || "Request failed"));
@@ -275,7 +316,7 @@ function roomLost() {
   const quick = S.quick;
   if (S.code) store.del(ROOM_KEY(S.code));
   leaveRoom({ notify: false });
-  $("#homeError").textContent = "";
+  homeError(""); codeError("");
   const n = Number(segVal("botCount") || 3), level = LEVEL_NAME[segVal("botLevel") || "medium"];
   $("#lostText").textContent = quick
     ? `The game server restarted and that table closed. Start a new game with ${n} ${level} bot${n === 1 ? "" : "s"}?`
@@ -290,28 +331,51 @@ function busyHome(on) { $$("#home .btn").forEach((b) => (b.disabled = on)); }
 async function quickPlay() {
   Sound.unlock();
   hideLost();
-  busyHome(true); $("#homeError").textContent = "";
+  busyHome(true); homeError("");
   try {
     const n = Number(segVal("botCount") || 3), level = segVal("botLevel") || "medium";
-    const r = await api("/api/rooms", { name: playerName(), bots: Array(n).fill(level), autostart: true });
+    const r = await api("/api/rooms", { name: playerName(), bots: Array(n).fill(level), autostart: true }, $("#quickPlay"));
     enterRoom(r, true);
-  } catch (e) { $("#homeError").textContent = e.message; } finally { busyHome(false); }
+  } catch (err) { homeError(err.message); } finally { busyHome(false); }
 }
 async function createRoom() {
   Sound.unlock();
   hideLost();
-  busyHome(true); $("#homeError").textContent = "";
-  try { enterRoom(await api("/api/rooms", { name: playerName() })); }
-  catch (e) { $("#homeError").textContent = e.message; } finally { busyHome(false); }
+  busyHome(true); homeError(""); codeError("");
+  try { enterRoom(await api("/api/rooms", { name: playerName() }, $("#createRoom"))); }
+  catch (err) { homeError(err.message); } finally { busyHome(false); }
 }
 const normCode = (c) => String(c || "").replace(/[^a-z]/gi, "").toUpperCase();
 async function joinRoom(code) {
   Sound.unlock();
   code = normCode(code);
-  if (!/^[A-Z]{6}$/.test(code)) { $("#homeError").textContent = "Room codes have 6 letters."; return; }
-  busyHome(true); $("#homeError").textContent = "";
-  try { enterRoom(await api(`/api/rooms/${code}/join`, { name: playerName() })); }
-  catch (e) { $("#homeError").textContent = e.message; } finally { busyHome(false); }
+  if (!/^[A-Z]{6}$/.test(code)) { codeError("Room codes have 6 letters. Check the code and try again."); return; }
+  busyHome(true); homeError(""); codeError("");
+  try { enterRoom(await api(`/api/rooms/${code}/join`, { name: playerName() }, $("#joinRoom"))); }
+  catch (e) { codeError(e.message); } finally { busyHome(false); }
+}
+// Opened from an invite link: joining is the main action.
+function inviteMode(code) {
+  const join = $("#joinRoom"), create = $("#createRoom");
+  join.dataset.invite = code || "";
+  join.textContent = code ? `Join room ${code}` : "Join";
+  join.classList.toggle("primary", !!code);
+  create.classList.toggle("primary", !code);
+  $("#joinOption").classList.toggle("first", !!code);
+  $(".join-row").classList.toggle("stacked", !!code);
+}
+// Say before any click when an invite's room is gone, full or playing.
+async function checkInvite(code) {
+  try {
+    const res = await fetch(`${API}/api/rooms/${code}`);
+    if (normCode($("#codeInput").value) !== code) return;
+    if (res.status === 404) { codeError(`Room ${code} has closed. Ask for a new link, or create your own room.`); inviteMode(null); return; }
+    if (!res.ok) return;
+    const r = await res.json();
+    const seated = (r.seats || []).filter((x) => !x.left).length;
+    if (r.status !== "lobby") codeError(friendlyError("Game already in progress"));
+    else if (seated >= 5) codeError(friendlyError("Room is full"));
+  } catch (_) { /* the Join click reports connection problems */ }
 }
 function enterRoom({ code, token, seat }, quick = false) {
   S.code = code; S.token = token; S.seat = seat; S.quick = quick;
@@ -355,7 +419,7 @@ function connect() {
     if (msg.type === "state") { S.queue.push(msg); pump(); }
     else if (msg.type === "error") {
       if (msg.fatal && /room not found/i.test(msg.message || "")) roomLost();
-      else if (msg.fatal) { store.del(ROOM_KEY(S.code)); leaveRoom({ notify: false }); $("#homeError").textContent = friendlyError(msg.message); }
+      else if (msg.fatal) { store.del(ROOM_KEY(S.code)); leaveRoom({ notify: false }); homeError(friendlyError(msg.message)); }
       else {
         // autoSentSig stays: an auto action the server refused is not re-sent.
         cancelAutoAct(); toast(esc(msg.message), "bad");
@@ -365,7 +429,7 @@ function connect() {
     } else if (msg.type === "emote" || msg.type === "chat") bubble(msg.seat, msg.text, msg.type === "chat");
     else if (msg.type === "hint") showHint(msg.action);
     else if (msg.type === "left" || msg.type === "pong") { /* acknowledged */ }
-    else if (msg.type === "kicked") { store.del(ROOM_KEY(S.code)); leaveRoom({ notify: false }); $("#homeError").textContent = "You were removed from the room."; }
+    else if (msg.type === "kicked") { store.del(ROOM_KEY(S.code)); leaveRoom({ notify: false }); homeError("The host removed you from the room. Start a new game, or ask for a new link."); }
   };
   ws.onclose = () => {
     if (S.ws !== ws || !S.code) return;
@@ -580,7 +644,7 @@ function renderLobby() {
     const li = document.createElement("li");
     li.className = `seat-item ${s.left ? "left" : ""}`;
     const role = s.left ? "Left" : s.kind === "bot" ? `${LEVEL_NAME[s.level] ?? ""} bot` : s.connected ? (i === S.seat ? "You" : "Online") : "Away";
-    const sub = s.host ? `${role}, host` : role;
+    const sub = s.host ? `${role} (host)` : role;
     li.innerHTML = `<div class="avatar">${esc(s.avatar ?? "")}<span class="dot ${s.connected ? "" : "off"}"></span></div>
       <div class="who"><b>${esc(s.name)}</b><small>${esc(sub)}</small></div>`;
     if (host && s.kind === "bot") {
@@ -597,24 +661,41 @@ function renderLobby() {
     }
     list.append(li);
   });
-  for (let i = r.seats.length; i < 5; i++) {
-    const li = document.createElement("li");
-    li.className = "seat-item seat-empty";
-    li.textContent = "Open seat";
-    list.append(li);
-  }
+  const open = 5 - r.seats.length;
+  $("#seatsOpen").textContent = open > 0 ? `${open} seat${open === 1 ? "" : "s"} open` : "Table full";
   $("#hostControls").classList.toggle("hidden", !host);
   $("#waitHost").classList.toggle("hidden", host);
-  $("#startGame").disabled = r.seats.length < 2;
-  $("#startGame").textContent = r.seats.length < 2 ? "Add a player to start" : `Start ${r.seats.length}-player game`;
+  const startable = r.seats.length >= 2;
+  $("#startGame").classList.toggle("hidden", !startable);
+  $("#startHint").classList.toggle("hidden", startable);
+  $("#startGame").textContent = `Start ${r.seats.length}-player game`;
+  document.title = `IB-Flip room ${r.code}`;
   $$("[data-addbot]").forEach((b) => (b.disabled = r.seats.length >= 5));
   $$('[data-addbot="hard"]').forEach((b) => (b.title = r.hard_available ? "Trained by self-play" : "Shark model unavailable. Plays like Regular."));
 }
 function inviteLink() { return `${location.origin}${location.pathname}?room=${S.code}`; }
-async function copyInvite() {
-  const link = inviteLink();
-  try { await navigator.clipboard.writeText(link); toast("Invite link copied."); }
-  catch (_) { prompt("Copy this link:", link); }
+// The button says "Link copied" for 2 s. If the clipboard is blocked, the
+// link appears in a read-only field under the button, selected.
+async function copyInvite(e) {
+  const btn = e.currentTarget, link = inviteLink();
+  try {
+    await navigator.clipboard.writeText(link);
+    clearTimeout(btn.__copied);
+    btn.textContent = "Link copied";
+    btn.__copied = setTimeout(() => (btn.textContent = "Copy invite link"), 2000);
+  } catch (_) {
+    let field = btn.nextElementSibling;
+    if (!field?.classList.contains("copy-field")) {
+      field = document.createElement("input");
+      field.className = "copy-field";
+      field.readOnly = true;
+      field.setAttribute("aria-label", "Invite link");
+      btn.after(field);
+    }
+    field.value = link;
+    field.focus();
+    field.select();
+  }
 }
 
 // ================================================================= TABLE
@@ -837,7 +918,7 @@ function renderStatus() {
       else if (g.four_loop) text = "4-loop. Play a 4, 5 or 6, or pick up the pile.";
       else text = `Your turn. ${targetText(g)}`;
     } else if (hasPlace(me)) {
-      text = `You finished ${placeLabel(me, g.players.length) === "Last" ? "last" : ordinal(me.place)}. Watching.`;
+      text = `${finishedLine(g)} Watching.`;
     } else if (g.current !== null) {
       text = `${nameOf(g.current)}'s turn. ${targetText(g)}`;
     }
@@ -846,7 +927,7 @@ function renderStatus() {
   prompt.classList.toggle("yours", yours);
   $("#me").classList.toggle("turn", g.current === S.seat && g.status === "playing");
   $("#me").classList.toggle("spectating", g.status === "playing" && hasPlace(me));
-  $("#hintBtn").disabled = !(g.current === S.seat && g.status === "playing" && !g.nine_draw);
+  setHintReady(g.current === S.seat && g.status === "playing" && !g.nine_draw);
 }
 
 function renderMe() {
@@ -1220,9 +1301,10 @@ function newlyFinished(prev, next) {
 async function announceFinish(i, g) {
   const p = g.players[i], n = g.players.length, f = finishOf(p);
   const el = $("#announce");
-  el.innerHTML = `<span class="announce-place ${f === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span><span>${finishText(i, p, n)}</span>`;
+  const badge = placeFinal(p, g) ? placeLabel(p, n) : "Out";
+  el.innerHTML = `<span class="announce-place ${f === "legal" ? "" : "bad"}">${badge}</span><span>${finishText(i, p, n, g)}</span>`;
   el.classList.remove("show"); void el.offsetWidth; el.classList.add("show");
-  narrate(finishText(i, p, n), f === "legal" ? "" : "bad");
+  narrate(finishText(i, p, n, g), f === "legal" ? "" : "bad");
   if (i === S.seat) (f === "legal" ? Sound.win : Sound.bad)();
   else Sound.turn();
   await nap(g.status === "over" ? 900 : 1700);
@@ -1394,6 +1476,14 @@ function showHint(action) {
   if (el) { el.classList.remove("hint-glow"); void el.offsetWidth; el.classList.add("hint-glow"); }
 }
 
+// The hint button stays focusable when unavailable and says why.
+const hintReady = () => $("#hintBtn").getAttribute("aria-disabled") !== "true";
+function setHintReady(on) {
+  const b = $("#hintBtn");
+  b.setAttribute("aria-disabled", String(!on));
+  b.title = on ? "Hint: what would Shark play?" : "Hints are available on your turn";
+}
+
 // =============================================================== results
 function showResult() {
   const g = S.game, r = S.room;
@@ -1410,14 +1500,18 @@ function showResult() {
     const cards = [...(p.hand || []), ...p.face_up.flat(), ...(p.face_down_cards || []).filter((c) => c !== null)];
     const f = finishOf(p);
     const tag = hasPlace(p) ? `<span class="standing ${f === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span>` : `<span class="standing none"></span>`;
-    const why = f === "eights" ? "8s" : f === "illegal" ? "illegal" : "";
-    return `<div class="reveal-row ${i === S.seat ? "is-me" : ""}">${placed ? tag : ""}<span class="name">${esc(r.seats[i]?.avatar ?? "")} ${nameOf(i)}${why ? ` <small class="why">${why}</small>` : ""}</span><div class="cards">${
+    const why = f === "eights" ? "Flipped the 8s" : f === "illegal" ? "Finished illegally" : "";
+    return `<div class="reveal-row ${i === S.seat ? "is-me" : ""}">${placed ? tag : ""}<span class="name"><span class="name-text">${esc(r.seats[i]?.avatar ?? "")} ${nameOf(i)}</span>${why ? `<small class="why">${why}</small>` : ""}</span><div class="cards">${
       cards.length ? cards.map((c) => cardHTML(c, { tiny: true })).join("") : '<span class="muted small">No cards left</span>'}</div></div>`;
   }).join("");
-  $("#scoreboard").innerHTML = r.seats.map((s, i) => `<span class="score-pill">${esc(s.avatar ?? "")} ${i === S.seat ? "You" : esc(s.name)} <b>${Number(s.wins) || 0}</b></span>`).join("");
+  $("#scoreboard").innerHTML = r.seats.map((s, i) => {
+    const w = Number(s.wins) || 0;
+    return `<span class="score-pill">${esc(s.avatar ?? "")} ${i === S.seat ? "You" : esc(s.name)}, <b>${w}</b> win${w === 1 ? "" : "s"}</span>`;
+  }).join("");
   const host = r.host === S.seat;
   $("#rematchBtn").classList.toggle("hidden", !host);
-  $("#toLobbyBtn").classList.toggle("hidden", !host);
+  // A quick game against bots has no lobby to go back to.
+  $("#toLobbyBtn").classList.toggle("hidden", !host || !!S.quick);
   $("#rematchWait").textContent = host ? "" : "Waiting for the host to start the next game.";
   $("#resultOverlay").classList.remove("hidden");
   (host ? $("#rematchBtn") : $("#homeBtn")).focus({ preventScroll: true });
@@ -1503,7 +1597,8 @@ function bubble(seat, text, isChat) {
 // ================================================================== rules
 // "What can go on what": pick the card on top of the pile and see what you
 // may play on it. The full table is one tap away for the reverse question.
-const RANK_ORDER = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"];
+// Same order as "Lowest card starts" in the rules.
+const RANK_ORDER = ["3", "6", "8", "9", "J", "Q", "K", "A", "7", "2", "10", "4", "5"];
 const TOP_NOTE = {
   "4": "A 4 starts a 4-loop: play a 4, 5 or 6, or pick up the pile.",
   "5": "Nothing goes on a 5 itself. You play on the card beneath it.",
@@ -1524,10 +1619,8 @@ function renderOnWhat(top) {
     ${TOP_NOTE[top] ? `<p class="onwhat-note">${TOP_NOTE[top]}</p>` : ""}`;
 }
 function buildRules() {
-  $("#powers").innerHTML = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"].map((r) => {
-    const id = RANKS.indexOf(r) * 4 + 3;
-    return `<div class="power-item">${cardHTML(id, { tiny: true })}<p>${POWER_TEXT[r]}</p></div>`;
-  }).join("");
+  $("#powers").innerHTML = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"]
+    .map((r) => `<div><dt>${r}</dt><dd>${POWER_TEXT[r]}</dd></div>`).join("");
   const picker = $("#onTop");
   picker.innerHTML = RANK_ORDER.map((r) => `<button type="button" role="radio" data-rank="${r}" aria-checked="false">${r}</button>`).join("");
   picker.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) renderOnWhat(b.dataset.rank); });
@@ -1574,6 +1667,34 @@ function buildRules() {
   });
 }
 
+// ================================================================ dialogs
+// Opening moves focus into the dialog, Tab stays inside the topmost one,
+// and closing returns focus to whatever opened it.
+const FOCUSABLE = 'button:not(:disabled), [href], input:not(:disabled), select, textarea, summary, [tabindex]:not([tabindex="-1"])';
+const focusables = (root) => $$(FOCUSABLE, root).filter((el) => el.offsetParent !== null || el === document.activeElement);
+function openOverlay(o) {
+  o.__opener = document.activeElement;
+  o.classList.remove("hidden");
+  const first = focusables(o)[0];
+  (first || $(".panel", o)).focus({ preventScroll: true });
+}
+function closeOverlay(o) {
+  if (o.classList.contains("hidden")) return;
+  o.classList.add("hidden");
+  const back = o.__opener; o.__opener = null;
+  if (back && back.isConnected && back.offsetParent !== null) back.focus({ preventScroll: true });
+}
+function trapTab(e) {
+  // Overlays share one z-index, so the last open one in the page is on top.
+  const top = $$(".overlay:not(.hidden)").at(-1);
+  if (!top) return;
+  const items = focusables(top);
+  if (!items.length) { e.preventDefault(); return; }
+  const i = items.indexOf(document.activeElement);
+  if (e.shiftKey && i <= 0) { e.preventDefault(); items.at(-1).focus(); }
+  else if (!e.shiftKey && (i === -1 || i === items.length - 1)) { e.preventDefault(); items[0].focus(); }
+}
+
 // ================================================================== wiring
 function wire() {
   const themeMedia = matchMedia("(prefers-color-scheme: dark)");
@@ -1582,10 +1703,11 @@ function wire() {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#111422" : "#f7f8fc";
     $$("[data-theme-toggle]").forEach((button) => {
-      const label = button.querySelector("span") || button;
-      label.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+      const label = button.querySelector("span");
+      if (label) label.textContent = theme === "dark" ? "Light mode" : "Dark mode";
       button.querySelector("use")?.setAttribute("href", theme === "dark" ? "#i-sun" : "#i-moon");
       button.setAttribute("aria-label", `Switch to ${theme === "dark" ? "light" : "dark"} mode`);
+      if (!label) button.title = button.getAttribute("aria-label");
     });
   };
   applyTheme();
@@ -1602,20 +1724,21 @@ function wire() {
       link.classList.remove("hidden");
     });
   }
-  $$("[data-open]").forEach((b) => b.addEventListener("click", () => $(`#${b.dataset.open}`).classList.remove("hidden")));
+  $$("[data-open]").forEach((b) => b.addEventListener("click", () => openOverlay($(`#${b.dataset.open}`))));
   $$(".overlay").forEach((o) => o.addEventListener("click", (e) => {
-    if (e.target === o && o.id !== "resultOverlay") o.classList.add("hidden");
-    if (e.target.closest("[data-close]")) o.classList.add("hidden");
+    if (e.target === o && o.id !== "resultOverlay") closeOverlay(o);
+    if (e.target.closest("[data-close]")) closeOverlay(o);
   }));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { $$(".overlay:not(#resultOverlay)").forEach((o) => o.classList.add("hidden")); closeSeen(); }
+    if (e.key === "Tab") trapTab(e);
+    if (e.key === "Escape") { $$(".overlay:not(#resultOverlay):not(.hidden)").forEach(closeOverlay); closeSeen(); }
     if (!$("#game").classList.contains("active") || e.target.closest("input, select, textarea")) return;
     if ($$(".overlay:not(.hidden)").length) return;
     const playable = $$("#hand .card.legal, #mySlots .card.legal");
     if (/^[1-9]$/.test(e.key) && playable[Number(e.key) - 1]) { e.preventDefault(); playable[Number(e.key) - 1].click(); }
     // A focused control (e.g. a Seen button) keeps its own Enter/Space.
     else if ((e.key === " " || e.key === "Enter") && !e.target.closest("button, a, summary, [tabindex]")) { const b = $("#actionBar .btn.primary:not(:disabled)") || $("#actionBar .btn:not(:disabled)"); if (b) { e.preventDefault(); b.click(); } }
-    else if (e.key === "h" || e.key === "H") { if (!$("#hintBtn").disabled) send({ type: "hint" }); }
+    else if (e.key === "h" || e.key === "H") { if (hintReady()) send({ type: "hint" }); }
   });
   $("#leaveLobby").addEventListener("click", leaveRoom);
   $("#copyLink").addEventListener("click", copyInvite);
@@ -1625,32 +1748,54 @@ function wire() {
   $("#rematchBtn").addEventListener("click", () => { $("#resultOverlay").classList.add("hidden"); send({ type: "rematch" }); });
   $("#toLobbyBtn").addEventListener("click", () => { $("#resultOverlay").classList.add("hidden"); send({ type: "lobby" }); });
   $("#homeBtn").addEventListener("click", leaveRoom);
-  $("#leaveGame").addEventListener("click", () => { $("#menuOverlay").classList.add("hidden"); leaveRoom(); });
+  // Leaving a running game asks first; after game over it just leaves.
+  const menuMode = (confirm) => {
+    $("#menuItems").classList.toggle("hidden", confirm);
+    $("#leaveConfirm").classList.toggle("hidden", !confirm);
+  };
+  $("#leaveGame").addEventListener("click", () => {
+    if (["fixing", "playing"].includes(S.game?.status)) { menuMode(true); $("#leaveNo").focus(); return; }
+    $("#menuOverlay").classList.add("hidden"); leaveRoom();
+  });
+  $("#leaveYes").addEventListener("click", () => { $("#menuOverlay").classList.add("hidden"); menuMode(false); leaveRoom(); });
+  $("#leaveNo").addEventListener("click", () => closeOverlay($("#menuOverlay")));
   // Slider runs slow → fast; the server wants a delay, so invert it.
   const speedRange = $("#speedRange");
   speedRange.value = (2.2 - pace()).toFixed(2);
   $("#menuBtn").addEventListener("click", () => {
     speedRange.closest(".row").classList.toggle("hidden", S.room?.host !== S.seat);
-    $("#menuOverlay").classList.remove("hidden");
+    menuMode(false);
+    openOverlay($("#menuOverlay"));
   });
   speedRange.addEventListener("change", (e) => {
     const delay = Math.round((2.2 - Number(e.target.value)) * 100) / 100;
     store.set("ibflip:pace", delay);
     send({ type: "speed", delay });
   });
-  $("#hintBtn").addEventListener("click", () => send({ type: "hint" }));
+  $("#hintBtn").addEventListener("click", () => { if (hintReady()) send({ type: "hint" }); });
   const soundBtn = $("#soundBtn");
+  // A toggle: the label stays "Mute", aria-pressed says whether it is on.
   const syncSound = () => {
     soundBtn.setAttribute("aria-pressed", String(!S.sound));
-    soundBtn.classList.toggle("muted-sound", !S.sound);
-    soundBtn.title = S.sound ? "Mute sound" : "Turn sound on";
+    soundBtn.querySelector("use").setAttribute("href", S.sound ? "#i-sound" : "#i-mute");
   };
   syncSound();
   soundBtn.addEventListener("click", () => { S.sound = !S.sound; store.set("ibflip:sound", S.sound ? "on" : "off"); syncSound(); Sound.unlock(); });
+  // Browsers start audio suspended until a gesture (and may suspend it
+  // again, e.g. iOS in the background): any press resumes it.
+  try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (_) {}
+  document.addEventListener("pointerdown", Sound.unlock, true);
+  document.addEventListener("keydown", Sound.unlock, true);
   const emoteBar = $("#emoteBar"), emoteBtn = $("#emoteBtn");
   emoteBar.innerHTML = EMOTES.map((e) => `<button data-emote="${e}" aria-label="Send ${e}">${e}</button>`).join("");
-  const setEmotes = (open) => { emoteBar.classList.toggle("open", open); emoteBtn.setAttribute("aria-expanded", String(open)); };
+  const setEmotes = (open) => {
+    const was = emoteBar.classList.contains("open");
+    emoteBar.classList.toggle("open", open); emoteBtn.setAttribute("aria-expanded", String(open));
+    if (open && !was) requestAnimationFrame(() => emoteBar.querySelector("button")?.focus());
+    if (!open && was && emoteBar.contains(document.activeElement)) emoteBtn.focus();
+  };
   emoteBtn.addEventListener("click", (e) => { e.stopPropagation(); setEmotes(!emoteBar.classList.contains("open")); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && emoteBar.classList.contains("open")) setEmotes(false); });
   emoteBar.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { send({ type: "emote", emoji: b.dataset.emote }); setEmotes(false); } });
   document.addEventListener("click", (e) => { if (!e.target.closest("#emoteBar")) setEmotes(false); });
   $("#lostDismiss").addEventListener("click", hideLost);
@@ -1691,15 +1836,10 @@ function wire() {
   });
 }
 
+// Wake the free server early; a slow start shows on the button pressed.
 async function wakeServer() {
-  const note = $("#serverNote");
-  const slow = setTimeout(() => (note.textContent = WAKING), 1800);
-  try {
-    await fetch(`${API}/health`);
-    note.textContent = "";
-  } catch (_) {
-    note.textContent = "Can't reach the game server. Check your connection and reload.";
-  } finally { clearTimeout(slow); if (note.textContent === WAKING) note.textContent = ""; }
+  try { await fetch(`${API}/health`); }
+  catch (_) { homeError("Can't reach the game server. Check your connection and reload."); }
 }
 
 function boot() {
@@ -1712,7 +1852,9 @@ function boot() {
     const saved = store.json(ROOM_KEY(code.toUpperCase()));
     if (saved) { S.code = code.toUpperCase(); S.token = saved.token; S.seat = saved.seat; S.quick = !!saved.quick; connect(); return; }
     $$(".tab").find((t) => t.dataset.tab === "friends").click();
-    $("#codeInput").value = code.toUpperCase();
+    $("#codeInput").value = code;
+    inviteMode(code);
+    checkInvite(code);
     if (!$("#nameInput").value) $("#nameInput").focus();
   }
 }

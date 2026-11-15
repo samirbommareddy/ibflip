@@ -208,19 +208,16 @@ a {
   display: grid;
   place-items: center;
 }
-.icon-btn:hover:not(:disabled) {
+.icon-btn:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--accent-soft);
   color: var(--text);
 }
+.icon-btn[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: default;
+}
 .icon-btn[aria-expanded="true"] {
   color: var(--accent);
-}
-#soundBtn .cross,
-#soundBtn.muted-sound .wave {
-  display: none;
-}
-#soundBtn.muted-sound .cross {
-  display: inline;
 }
 .link-btn {
   background: none;
@@ -253,8 +250,7 @@ a {
 }
 .home-heading {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem 1rem;
 }
@@ -265,23 +261,6 @@ a {
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;
-}
-.theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex: none;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text);
-  font-size: 0.9375rem;
-  font-weight: 600;
-}
-.theme-toggle:hover {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 .home-panel {
   display: flex;
@@ -406,6 +385,23 @@ a {
   flex: none;
   min-width: 5.5rem;
 }
+/* From an invite link, joining comes first and is the main action. */
+#joinOption.first {
+  order: -1;
+}
+.join-row.stacked {
+  flex-direction: column;
+}
+.join-row.stacked .btn {
+  min-height: 3.25rem;
+  font-size: 1.0625rem;
+}
+/* Space is kept for one wrapped message, so nothing jumps when it shows. */
+.error.code-error {
+  display: block;
+  min-height: 2.8em;
+  font-size: var(--label);
+}
 .home-links {
   display: flex;
   justify-content: center;
@@ -418,16 +414,8 @@ a {
   line-height: 1.4;
   margin: 0;
 }
-.error:empty,
-.server-note:empty {
+.error:empty {
   display: none;
-}
-.server-note {
-  margin: -1rem 0 0;
-  font-size: var(--label);
-  line-height: 1.4;
-  color: var(--muted);
-  text-align: center;
 }
 .lost-notice {
   background: var(--accent-soft);
@@ -468,10 +456,24 @@ a {
   align-items: center;
   gap: 0.75rem;
 }
-.icon-btn.back {
+.btn.back {
   position: absolute;
   left: 0.75rem;
   top: 0.75rem;
+  gap: 0.25rem;
+  padding-left: 0.4rem;
+  border-color: transparent;
+  color: var(--muted);
+}
+.copy-field {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--text);
+  padding: 0.6rem 0.75rem;
+  font-size: var(--label);
+  user-select: all;
 }
 .lobby-label {
   font-size: 1rem;
@@ -495,17 +497,22 @@ a {
 .seat-list {
   list-style: none;
   padding: 0;
-  margin: 0.5rem 0;
+  margin: 0.5rem 0 0;
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+}
+.seats-open {
+  margin: 0 0 0.25rem;
+  font-size: var(--label);
+  color: var(--muted);
 }
 .seat-item {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem;
+  padding: 0.45rem 0.6rem;
   border-radius: 6px;
   border: 1px solid var(--line);
   background: var(--surface);
@@ -545,11 +552,6 @@ a {
 }
 .seat-item.left {
   opacity: 0.55;
-}
-.seat-empty {
-  border-style: dashed;
-  justify-content: center;
-  color: var(--muted);
 }
 .host-controls {
   width: 100%;
@@ -636,9 +638,6 @@ a {
 .hud-right {
   display: flex;
   gap: 2px;
-}
-#hintBtn:disabled {
-  opacity: 0.35;
 }
 .table-wrap {
   flex: 1;
@@ -1463,6 +1462,10 @@ a {
   width: max-content;
   max-width: min(26rem, calc(100vw - 2rem));
 }
+/* Toasts take the pointer so hovering one keeps it up. */
+.toast-stack .toast {
+  pointer-events: auto;
+}
 .toast {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -1525,10 +1528,25 @@ a {
 }
 .result-panel {
   width: min(35rem, 100%);
-  padding: 1.75rem;
+  padding: 1.75rem 1.75rem 0;
   text-align: center;
   max-height: 92dvh;
   overflow: auto;
+}
+/* The actions stay in view while the standings scroll. */
+.result-foot {
+  position: sticky;
+  bottom: 0;
+  margin: 1.25rem -1.75rem 0;
+  padding: 0.75rem 1.75rem 1.25rem;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+.result-foot .muted:empty {
+  display: none;
+}
+.result-foot .muted {
+  margin: 0.5rem 0 0;
 }
 .result-panel h2 {
   font-size: 2.25rem;
@@ -1543,7 +1561,6 @@ a {
   display: flex;
   gap: 0.5rem;
   justify-content: center;
-  margin-top: 1.25rem;
   flex-wrap: wrap;
 }
 .reveal {
@@ -1553,19 +1570,32 @@ a {
   margin: 1.5rem 0;
   text-align: left;
 }
+/* Each row starts at the top, so leftover cards that wrap stay with
+   their own player. */
 .reveal-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.6rem;
 }
 .reveal-row .name {
-  width: 8em;
+  width: 9.5em;
   flex: none;
+  display: flex;
+  flex-direction: column;
   font-weight: 650;
   font-size: 0.9375rem;
+  line-height: 1.3;
+  padding-top: 0.2rem;
+  min-width: 0;
+}
+.reveal-row .name-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.reveal-row .standing {
+  padding-top: 0.2rem;
+  line-height: 1.3;
 }
 .reveal-row .cards {
   display: flex;
@@ -1577,7 +1607,8 @@ a {
   --card-w: 2.25rem;
 }
 .reveal-row .why {
-  color: var(--danger);
+  color: var(--muted);
+  font-weight: 400;
   font-size: var(--label);
 }
 .reveal-row.is-me .name {
@@ -1605,6 +1636,15 @@ a {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+.menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.leave-q {
+  margin: 0;
+  font-weight: 650;
 }
 .menu-panel h3 {
   margin: 0 0 0.5rem;
@@ -1676,25 +1716,39 @@ a {
   font-weight: 650;
 }
 .powers {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr));
-  gap: 0.5rem;
+  margin: 0;
 }
-.power-item {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  border: 1px solid var(--line);
-  padding: 0.5rem 0.75rem 0.5rem 0.5rem;
-  border-radius: 6px;
+.powers > div {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr;
+  gap: 0 0.75rem;
+  padding: 0.35rem 0;
+}
+.powers dt {
+  font-size: 1.125rem;
+  font-weight: 750;
+  color: var(--accent);
+}
+.powers dd {
+  margin: 0;
+}
+.finish-table {
+  margin: 0.5rem 0 0.25rem;
+  border-collapse: collapse;
+  width: 100%;
   font-size: 0.9375rem;
   line-height: 1.4;
 }
-.power-item p {
-  margin: 0;
+.finish-table th,
+.finish-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.4rem 0.75rem 0.4rem 0;
+  border-bottom: 1px solid var(--line);
 }
-.power-item .card {
-  --card-w: 2.5rem;
+.finish-table th {
+  font-weight: 650;
+  color: var(--muted);
 }
 .defs,
 .keys {
@@ -2140,7 +2194,27 @@ kbd {
     grid-template-columns: 1fr;
   }
   .result-panel {
-    padding: 1.25rem;
+    padding: 1.25rem 1.25rem 0;
+  }
+  .result-foot {
+    margin: 1rem -1.25rem 0;
+    padding: 0.75rem 1.25rem 1rem;
+  }
+  /* Leftover cards go under the name, at full width. */
+  .reveal-row {
+    flex-wrap: wrap;
+    row-gap: 0.35rem;
+  }
+  .reveal-row .name {
+    width: auto;
+    flex: 1;
+  }
+  .reveal-row .cards {
+    flex-basis: 100%;
+    padding-left: 3.4em;
+  }
+  .powers > div {
+    grid-template-columns: 2rem 1fr;
   }
 }
 /* Short screens (landscape phones, zoomed desktops): smaller cards and a
@@ -2336,6 +2410,93 @@ kbd {
     grid-template-columns: repeat(2, max-content);
     justify-content: center;
     gap: 1rem 3rem;
+  }
+}
+/* Very short screens: the main action on home and in the lobby stays
+   within reach. */
+@media (max-height: 480px) {
+  #home {
+    padding: 1rem 1.25rem;
+  }
+  .home-inner,
+  .home-panel {
+    gap: 1rem;
+  }
+  .logo {
+    font-size: 2.5rem;
+  }
+  .field {
+    gap: 0.25rem;
+  }
+  .field input,
+  .join-row input {
+    padding: 0.55rem 0.85rem;
+  }
+  .tab {
+    padding: 0.3rem 0 0.5rem;
+  }
+  .tab-body {
+    gap: 0.5rem;
+  }
+  .seg button {
+    min-height: 2.25rem;
+    padding: 0.25rem 0.6rem;
+  }
+  #quickPlay {
+    margin-top: 0.25rem;
+  }
+  .home-links {
+    margin-top: -0.5rem;
+  }
+  .lobby-inner {
+    padding: 2.75rem 1rem 0;
+    gap: 0.4rem;
+  }
+  #lobby {
+    padding: 0.5rem 0.5rem 0;
+  }
+  .lobby-label {
+    display: none;
+  }
+  .room-code {
+    font-size: 1.75rem;
+  }
+  .lobby-inner > .btn.ghost:not(.back) {
+    padding: 0.4rem 0.75rem;
+  }
+  /* Adding bots and Start stay on screen while the seat list scrolls. */
+  .host-controls {
+    position: sticky;
+    bottom: 0;
+    gap: 0.5rem;
+    padding: 0.5rem 0 0.75rem;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+  }
+  .add-bot > span {
+    flex-basis: auto;
+  }
+  .host-controls .btn.big {
+    min-height: 2.75rem;
+    padding: 0.6rem 1rem;
+  }
+  #waitHost {
+    padding-bottom: 0.75rem;
+  }
+  .result-panel {
+    padding: 1rem 1rem 0;
+  }
+  .result-panel h2 {
+    font-size: 1.5rem;
+    margin: 0 0 0.25rem;
+  }
+  .reveal {
+    margin: 0.75rem 0;
+    gap: 0.5rem;
+  }
+  .result-foot {
+    margin: 0.75rem -1rem 0;
+    padding: 0.5rem 1rem 0.75rem;
   }
 }
 @media (min-width: 2200px) and (min-height: 1200px) {

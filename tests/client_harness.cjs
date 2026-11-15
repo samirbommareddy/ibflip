@@ -89,7 +89,7 @@ function loadClient({ hidden = false } = {}) {
   source += `
 globalThis.__T = { S, act, send, isLegalNow, soleLegalAction, autoActFor, scheduleAutoAct, cancelAutoAct,
   gameSig, apply, pump, connect, leaveRoom, showHint, AUTO_ACT_DELAY,
-  sendReady, continueAutoGroup, resultOutcome,
+  sendReady, continueAutoGroup, resultOutcome, finishedLine, finishText,
   setAnimateEvents(fn) { animateEvents = fn; },
   setRender(fn) { renderGame = fn; },
   setToast(fn) { toast = fn; } };
