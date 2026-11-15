@@ -4,7 +4,8 @@
 // ---------------------------------------------------------------- constants
 const RANKS = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2"];
 const SUITS = ["♥", "♦", "♣", "♠"];
-const POWER = { "2": "Again", "3": "Reverse", "4": "4-loop", "5": "Under", "7": "≤ 7", "8": "Skip", "9": "Draw", "10": "Flip" };
+const SUIT_NAME = ["hearts", "diamonds", "clubs", "spades"];
+const RANK_NAME = { J: "jack", Q: "queen", K: "king", A: "ace" };
 const POWER_TEXT = {
   "2": "Play again.",
   "3": "Odd number of 3s reverses direction. Anything goes on a 3.",
@@ -148,23 +149,21 @@ const Sound = (() => {
 })();
 
 // =============================================================== card render
-function cardHTML(id, { cls = "", tiny = false, extra = "" } = {}) {
+const cardName = (id) => `${RANK_NAME[rankOf(id)] ?? rankOf(id)} of ${SUIT_NAME[id & 3]}`;
+function cardHTML(id, { cls = "", tiny = false, extra = "", count = 1 } = {}) {
   if (id === null || id === undefined) return `<div class="card back ${cls}" ${extra}></div>`;
   const r = rankOf(id), s = suitOf(id);
   const face = r === "J" || r === "Q" || r === "K";
-  const center = face ? r : r === "A" ? s : s;
-  const power = POWER[r] ? `<span class="power">${POWER[r]}</span>` : "";
-  return `<div class="card ${isRed(id) ? "red" : ""} ${face ? "face" : ""} ${tiny ? "tiny" : ""} ${cls}" data-card="${id}" ${extra}>
-    <span class="ix tl"><b>${r}</b><i>${s}</i></span>
-    <span class="pip">${center}</span>
-    <span class="ix br"><b>${r}</b><i>${s}</i></span>${power}</div>`;
+  const label = count > 1 ? `${count} ${RANK_NAME[r] ?? r}s` : cardName(id);
+  return `<div class="card ${isRed(id) ? "red" : ""} ${face ? "face" : ""} ${tiny ? "tiny" : ""} ${cls}" data-card="${id}" role="img" aria-label="${label}" ${extra}>
+    <span class="ix tl" aria-hidden="true"><b>${r}</b><i>${s}</i></span>
+    <span class="pip" aria-hidden="true">${face ? r : s}</span>${count > 1 ? `<span class="count" aria-hidden="true">×${count}</span>` : ""}</div>`;
 }
 function cardEl(id, opts) {
   const t = document.createElement("template");
   t.innerHTML = cardHTML(id, opts).trim();
   return t.content.firstChild;
 }
-const rot = (id) => ((((id ?? 7) * 37) % 13) - 6) * 1.1;
 
 // ================================================================ screens
 function show(screen) {
@@ -205,7 +204,7 @@ function finishOf(p) {
 const hasPlace = (p) => p && p.place !== null && p.place !== undefined;
 function placeLabel(p, n) {
   if (!hasPlace(p)) return "";
-  return p.place === n && finishOf(p) !== "legal" ? "last" : ordinal(p.place);
+  return p.place === n && finishOf(p) !== "legal" ? "Last" : ordinal(p.place);
 }
 function finishText(i, p, n) {
   const who = nameOf(i), f = finishOf(p);
@@ -632,26 +631,30 @@ function renderGame() {
   const g = S.game, r = S.room;
   if (!g) return;
   $("#hudCode").textContent = r.code;
-  renderTurnOrder();
   renderSeats();
   renderPiles();
   renderMe();
   renderStatus();
 }
 
-// Opponents sit in one row in turn order after you. The single turn-order
-// indicator says which way play travels along that row.
-function renderTurnOrder() {
-  const g = S.game, el = $("#dirRing");
-  const ccw = g.direction === -1;
-  el.classList.toggle("ccw", ccw);
-  el.classList.toggle("hidden", g.players.length < 3);
-  const label = ccw ? "Turn order: right to left" : "Turn order: left to right";
-  el.setAttribute("aria-label", label);
-  el.title = label;
+// The player after the current one, in the current direction (players who
+// have finished are passed over). Skips from 8s are not predicted.
+function nextSeat(g) {
+  const n = g.players.length;
+  if (g.status !== "playing" || g.current === null || g.current === undefined || n < 3) return null;
+  const step = g.direction === -1 ? -1 : 1;
+  for (let k = 1; k < n; k++) {
+    const i = (((g.current + k * step) % n) + n) % n;
+    const p = g.players[i];
+    if (p.active && !hasPlace(p)) return i;
+  }
+  return null;
 }
+// Opponents sit in one row in turn order after you. The current player's
+// name is underlined; a small "Next" tag marks who plays after them.
 function renderSeats() {
   const g = S.game, r = S.room, n = g.players.length;
+  const next = nextSeat(g);
   const seats = $("#seats");
   seats.dataset.count = n - 1;
   const want = new Set();
@@ -669,23 +672,26 @@ function renderSeats() {
       seats.append(el);
     }
     el.style.order = relIndex(i);
-    el.classList.toggle("turn", g.current === i);
+    el.classList.toggle("turn", g.status === "playing" && g.current === i);
     el.classList.toggle("out", !p.active || hasPlace(p));
     el.classList.toggle("finished", hasPlace(p));
     el.classList.toggle("ready", g.status === "fixing" && p.ready);
     el.classList.toggle("ready-wait", g.status === "fixing" && !p.ready);
-    const role = s.left ? "Left" : s.kind === "bot" ? LEVEL_NAME[s.level] ?? "" : s.connected ? "" : "Away";
-    const setup = g.status === "fixing" ? (p.ready ? "Ready" : "Setting up") : "";
-    const sub = setup ? `<span class="seat-state ${p.ready ? "ok" : ""}">${setup}</span>` : esc(role);
+    const away = s.left ? "Left" : s.kind !== "bot" && !s.connected ? "Away" : "";
+    const hc = Number(p.hand_count);
+    const count = `${hc} card${hc === 1 ? "" : "s"}`;
+    const sub = g.status === "fixing" ? `<span class="seat-state ${p.ready ? "ok" : ""}">${p.ready ? "Ready" : "Setting up"}</span>` : away ? `${count}, ${away}` : count;
+    // The Next tag stays in the markup (hidden unless next): see .next-tag.off.
+    const tag = n > 2 && !hasPlace(p) ? `<span class="next-tag ${next === i ? "" : "off"}">Next</span>` : "";
     setHTML($(".seat-head", el), `<div class="avatar">${esc(s.avatar ?? "🙂")}${s.kind === "human" ? `<span class="dot ${s.connected ? "" : "off"}"></span>` : ""}</div>
-        <div class="seat-text"><div class="seat-name" title="${esc(s.name ?? "Player")}">${esc(s.name ?? "Player")}</div><div class="seat-sub">${sub}</div></div>${hasPlace(p) ? `<span class="place-badge ${finishOf(p) === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span>` : ""}`);
-    // A short stack stands in for the hand; the number carries the count.
-    const backs = Math.min(p.hand_count, 3);
-    setHTML($(".opp-hand", el), `${Array.from({ length: backs }, () => cardHTML(null)).join("")}${p.hand_count ? `<span class="hand-count" aria-label="${Number(p.hand_count)} cards in hand">${Number(p.hand_count)}</span>` : ""}`);
+        <div class="seat-text"><div class="seat-name" title="${esc(s.name ?? "Player")}">${esc(s.name ?? "Player")}</div><div class="seat-sub">${sub}${tag}</div></div>${hasPlace(p) ? `<span class="place-badge ${finishOf(p) === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span>` : ""}`);
+    // A short stack of backs stands in for the hand; the count is in text.
+    setHTML($(".opp-hand", el), Array.from({ length: Math.min(hc, 3) }, () => cardHTML(null)).join(""));
     const seen = $(".seen-btn", el);
-    seen.classList.toggle("hidden", !p.known.length);
-    setHTML(seen, `Seen ${p.known.length}`);
-    seen.setAttribute("aria-label", `${esc(s.name ?? "Player")} holds ${p.known.length} cards everyone has seen`);
+    const kn = p.known.length;
+    seen.classList.toggle("hidden", !kn);
+    setHTML(seen, `Seen ${kn}`);
+    seen.setAttribute("aria-label", `${esc(s.name ?? "Player")} holds ${kn} card${kn === 1 ? "" : "s"} everyone has seen`);
     renderSlots($(".slots", el), p, i, false);
   }
   if (S.seenOpen !== null) fillSeen(S.seenOpen);
@@ -745,13 +751,13 @@ function renderPiles() {
   const dn = Math.min(g.draw_count, 2);
   setHTML(draw, Array.from({ length: dn }, (_, i) => cardHTML(null, { extra: `style="translate:${-i * 3}px ${-i * 3}px"` })).join(""));
   draw.classList.toggle("empty", !g.draw_count);
-  setHTML($("#drawLabel"), g.draw_count ? `Deck <b>${Number(g.draw_count)}</b>` : "Deck empty");
+  setHTML($("#drawLabel"), g.draw_count ? `Deck <b>${Number(g.draw_count)}</b>` : "Deck");
   S.liveShown = [...g.live];
   drawLive(g.live);
   const k = Math.min(g.discard_count, 2);
   setHTML($("#discardPile"), Array.from({ length: k }, (_, i) => cardHTML(null, { extra: `style="translate:${-i * 3}px ${-i * 3}px"` })).join(""));
   $("#discardPile").classList.toggle("empty", !g.discard_count);
-  setHTML($("#discardLabel"), g.discard_count ? `Discard <b>${Number(g.discard_count)}</b>` : "Discard empty");
+  setHTML($("#discardLabel"), g.discard_count ? `Discard <b>${Number(g.discard_count)}</b>` : "Discard");
   const mine = g.current === S.seat && g.status === "playing" && !S.pendingAction;
   draw.classList.toggle("clickable", mine && !!g.legal?.reveal);
   $("#livePile").classList.toggle("clickable", mine && !!g.legal?.pick_up);
@@ -759,7 +765,10 @@ function renderPiles() {
 }
 
 const LIVE_FAN = 5;
-const liveTransform = (c, i, len) => `translateX(${(i - (len - 1)) * 16}%) rotate(${rot(c)}deg)`;
+// A straight fan: each earlier card sits LIVE_STEP of a card width further
+// left, so its index stays readable. The pile is sized to fit LIVE_FAN cards.
+const LIVE_STEP = 0.3;
+const liveTransform = (i, len) => `translateX(${(i - (len - 1)) * LIVE_STEP * 100}%)`;
 // Keyed by card id: cards already on the pile keep their node and slide
 // (CSS transition) when the fan shifts; only new cards are created.
 function drawLive(live) {
@@ -772,10 +781,10 @@ function drawLive(live) {
     let node = $(`.card[data-card="${c}"]`, el);
     if (!node) node = cardEl(c);
     if (el.children[i] !== node) el.insertBefore(node, el.children[i] || null);
-    node.style.transform = liveTransform(c, i, shown.length);
+    node.style.transform = liveTransform(i, shown.length);
     node.classList.toggle("ace-one", aceOne.has(c));
   });
-  setHTML($("#liveLabel"), live.length ? `Live pile <b>${live.length}</b>` : "Live pile");
+  setHTML($("#liveLabel"), live.length ? `Pile <b>${live.length}</b>` : "Pile");
 }
 
 // What may be played next, as a short sentence.
@@ -785,8 +794,8 @@ function targetText(g) {
   const r = RANKS[g.target];
   if (r === "7") return "Play a 7 or lower.";
   const top = g.live[g.live.length - 1];
-  const under = top !== undefined && rankOf(top) === "5" ? ", under the 5" : "";
-  return `Play on ${r === "A" || r === "8" ? "an" : "a"} ${r}${under}.`;
+  if (top !== undefined && rankOf(top) === "5") return `Play on the ${r} under the 5.`;
+  return `Play on ${r === "A" || r === "8" ? "an" : "a"} ${r}.`;
 }
 
 function renderStatus() {
@@ -794,9 +803,6 @@ function renderStatus() {
   let hud = "";
   if (g.status === "fixing") hud = "Set up your table";
   else if (g.status === "over") hud = "Game over";
-  else {
-    hud = { EARLY_GAME: "Early game", MIDDLE_GAME: "Mid game", END_GAME: "End game" }[g.phase] || "";
-  }
   $("#hudStatus").textContent = hud;
   const prompt = $("#prompt");
   let text = "", yours = false;
@@ -809,10 +815,10 @@ function renderStatus() {
       yours = true;
       const emptySlot = me.face_up.some((sl) => !sl.length);
       text = emptySlot
-        ? (S.selected === null ? "Fill the empty face-up slot before you are ready. Tap a hand card, then the empty slot." : "Now tap the empty slot to fill it.")
+        ? (S.selected === null ? "Fill the empty face-up slot: pick a hand card, then the slot." : "Now pick the empty slot.")
         : S.selected === null
-        ? "Tap a hand card to swap, or a face-up card to combine matching ranks."
-        : `Now tap a face-up card to ${me.face_up.some((sl) => sl.length && rankIx(sl[sl.length - 1]) === rankIx(S.selected)) ? "swap with, or a matching one to stack on." : "swap with."}`;
+        ? "Swap a hand card with a face-up card, or stack matching ranks."
+        : `Now pick a face-up card to ${me.face_up.some((sl) => sl.length && rankIx(sl[sl.length - 1]) === rankIx(S.selected)) ? "swap with, or a matching one to stack on." : "swap with."}`;
     }
   } else if (g.status === "playing") {
     if (g.current === S.seat) {
@@ -822,7 +828,7 @@ function renderStatus() {
       if (g.nine_draw) text = "Drawing from the discard…";
       else if (auto === A_END) text = "No more cards to add. Ending your turn.";
       else if (auto === A_PICKUP) text = "No playable card. Picking up the pile.";
-      else if (g.group_rank !== null && g.group_rank !== undefined) text = L.cards?.length ? `Play another ${RANKS[g.group_rank]}, or tap Done.` : "Tap Done to end your turn.";
+      else if (g.group_rank !== null && g.group_rank !== undefined) text = L.cards?.length ? `Play another ${RANKS[g.group_rank]} or press Done.` : "Press Done to end your turn.";
       else if (L.face_down?.length) text = "Pick a face-down card to play.";
       else if (g.start_card !== null && g.start_card !== undefined && L.cards?.includes(g.start_card) && L.cards.every((c) => rankIx(c) === rankIx(g.start_card))) text = L.cards.length === 1 ? `You start. Play your ${short(g.start_card)}.` : `You start. Play ${["8", "A"].includes(RANKS[rankIx(g.start_card)]) ? "an" : "a"} ${RANKS[rankIx(g.start_card)]}.`;
       else if (!L.cards?.length && L.reveal && L.pick_up) text = "No playable card. Flip the top of the deck or pick up the pile.";
@@ -831,7 +837,7 @@ function renderStatus() {
       else if (g.four_loop) text = "4-loop. Play a 4, 5 or 6, or pick up the pile.";
       else text = `Your turn. ${targetText(g)}`;
     } else if (hasPlace(me)) {
-      text = `You finished ${placeLabel(me, g.players.length) === "last" ? "last" : ordinal(me.place)}.`;
+      text = `You finished ${placeLabel(me, g.players.length) === "Last" ? "last" : ordinal(me.place)}. Watching.`;
     } else if (g.current !== null) {
       text = `${nameOf(g.current)}'s turn. ${targetText(g)}`;
     }
@@ -900,54 +906,75 @@ function renderMe() {
 
 function handLayout(hand, n) {
   const cw = hand.querySelector(".card")?.offsetWidth || 80;
-  // Leave room for the outer cards' rotation when the fan is wide.
-  const avail = Math.max(160, hand.clientWidth - 24 - (n > 4 ? cw * 1.1 : 0));
-  const margin = n > 1 ? Math.min(-cw * 0.08, (avail - n * cw) / (2 * n)) : 0;
-  const spread = Math.min(20, n * 3);
-  return { margin, spread, arc: Math.min(10, n * 1.6), cw };
+  const avail = Math.max(160, hand.clientWidth - 24);
+  // Cards overlap a little, and more when the row would not fit.
+  const margin = n > 1 ? Math.min(-cw * 0.06, (avail - n * cw) / (2 * n)) : 0;
+  return { margin };
+}
+
+// Same-rank hand cards are one stack: the card shown on top is the one a
+// click plays (or picks, in setup), and a badge says how many there are.
+function handStacks(g, { mine, fixing, legalCards }) {
+  const byRank = new Map();
+  for (const id of [...g.hand].sort((a, b) => a - b)) {
+    const r = rankIx(id);
+    if (!byRank.has(r)) byRank.set(r, []);
+    byRank.get(r).push(id);
+  }
+  return [...byRank].map(([rank, ids]) => {
+    const playable = mine && g.source === "hand" ? ids.filter((c) => legalCards.has(c)) : [];
+    const top = fixing && ids.includes(S.selected) ? S.selected : playable[0] ?? ids[0];
+    return { rank, ids, top, legal: fixing || playable.length > 0 };
+  });
 }
 
 function renderHand(g, me, { mine, fixing, legalCards }) {
   const hand = $("#hand");
-  const cards = [...g.hand].sort((a, b) => a - b);
-  hand.style.setProperty("--n", cards.length);
-  const want = new Set(cards);
+  const stacks = handStacks(g, { mine, fixing, legalCards });
+  hand.style.setProperty("--n", stacks.length);
+  const want = new Set(stacks.map((st) => String(st.rank)));
   const known = new Set(me.known || []);
-  const existing = new Map($$(".card", hand).map((el) => [Number(el.dataset.card), el]));
-  // FLIP: remember where the surviving cards were laid out (offsetLeft
-  // ignores the per-card rotate/lift transforms, so only the slide is animated).
+  const existing = new Map($$(".card", hand).map((el) => [el.dataset.rank, el]));
+  // FLIP: remember where the surviving stacks were laid out.
   const before = new Map();
-  for (const [id, el] of existing) if (want.has(id)) before.set(id, el.offsetLeft);
-  for (const [id, el] of existing) if (!want.has(id)) el.remove();
+  for (const [r, el] of existing) if (want.has(r)) before.set(r, el.offsetLeft);
+  for (const [r, el] of existing) if (!want.has(r)) el.remove();
   const added = [];
-  cards.forEach((id, i) => {
-    let el = existing.get(id);
-    if (!el || !want.has(id)) { el = cardEl(id); added.push(el); }
+  const els = stacks.map((st, i) => {
+    let el = existing.get(String(st.rank));
+    const sig = `${st.top}:${st.ids.length}`;
+    if (!el) { el = cardEl(st.top, { count: st.ids.length }); el.dataset.rank = st.rank; added.push(el); }
+    else if (el.dataset.sig !== sig) {
+      // Same stack, new top card or count: refresh it in place (no entrance).
+      const fresh = cardEl(st.top, { count: st.ids.length });
+      el.className = fresh.className;
+      el.innerHTML = fresh.innerHTML;
+      el.dataset.card = st.top;
+      el.setAttribute("aria-label", fresh.getAttribute("aria-label"));
+    }
+    el.dataset.sig = sig;
+    el.dataset.count = st.ids.length;
     if (hand.children[i] !== el) hand.insertBefore(el, hand.children[i] || null);
+    return el;
   });
-  const n = cards.length;
-  const { margin, spread, arc, cw } = handLayout(hand, n);
-  $$(".card", hand).forEach((el, i) => {
-    const id = Number(el.dataset.card);
+  const { margin } = handLayout(hand, stacks.length);
+  stacks.forEach((st, i) => {
+    const el = els[i];
+    const seen = g.status !== "fixing" && st.ids.some((c) => known.has(c));
     el.style.margin = `0 ${margin}px`;
-    const t = n > 1 ? (i / (n - 1)) * 2 - 1 : 0; // -1 .. 1
-    const deg = (t * spread) / 2;
-    el.style.setProperty("--rot", `${deg}deg`);
-    // Rotating about a pivot below the card drops its outer corner by about
-    // (w/2)·sin|θ|; lift by that much so the fan never hangs off the bottom.
-    el.style.setProperty("--arc", `${-((1 - t * t) * arc + (cw / 2) * Math.sin(Math.abs(deg) * Math.PI / 180))}px`);
     el.style.zIndex = i + 1;
-    const legal = (fixing) || (mine && legalCards.has(id) && g.source === "hand");
-    el.classList.toggle("known-mark", known.has(id) && g.status !== "fixing");
-    el.classList.toggle("legal", legal);
-    el.classList.toggle("selected", fixing && S.selected === id);
-    el.classList.toggle("dim", mine && !legal);
+    el.style.visibility = ""; // a play animation may have hidden it
+    el.classList.toggle("known-mark", seen);
+    el.classList.toggle("legal", st.legal);
+    el.classList.toggle("selected", fixing && st.ids.includes(S.selected));
+    el.classList.toggle("dim", mine && !st.legal);
     el.classList.remove("pending");
-    el.title = mine && legal ? "Click to play. Double-click to play every card of this rank." : known.has(id) && g.status !== "fixing" ? "Your opponents saw you pick this card up." : "";
+    el.title = mine && st.legal ? (st.ids.length > 1 ? "Click to play one. Double-click to play them all." : "Click to play.")
+      : seen ? "Your opponents saw you pick this card up." : "";
   });
   if (REDUCED()) return;
-  for (const [id, x0] of before) {
-    const el = existing.get(id);
+  for (const [r, x0] of before) {
+    const el = existing.get(r);
     const dx = x0 - el.offsetLeft;
     if (Math.abs(dx) > 1) el.animate([{ translate: `${dx}px 0` }, { translate: "0 0" }], { duration: 280, easing: "cubic-bezier(.2,.8,.2,1)" });
   }
@@ -1089,9 +1116,11 @@ function cardRect(el, w = cardWidthIn(el)) {
 }
 function findCardEl(i, id) {
   const root = i === S.seat ? $("#me") : $(`.seat[data-seat="${i}"]`);
-  return root ? $(`.card[data-card="${id}"]`, root) : null;
+  if (!root) return null;
+  // Your hand shows one card per rank: fall back to that rank's stack.
+  return $(`.card[data-card="${id}"]`, root) || (i === S.seat ? $(`#hand .card[data-rank="${rankIx(id)}"]`) : null);
 }
-async function fly(fromRect, toRect, id, { dur = 420, faceDown = false, rotateTo = 0, fromRot = 0, hideSource = null, keep = false, arc = 34 } = {}) {
+async function fly(fromRect, toRect, id, { dur = 420, faceDown = false, hideSource = null, keep = false, arc = 34 } = {}) {
   if (!fromRect || !toRect) return null;
   if (hideSource) hideSource.style.visibility = "hidden";
   if (REDUCED() || S.fast) return null;
@@ -1106,12 +1135,12 @@ async function fly(fromRect, toRect, id, { dur = 420, faceDown = false, rotateTo
   const tx = toRect.left + toRect.width / 2 - w / 2, ty = toRect.top + toRect.height / 2 - (w * 1.4) / 2;
   const s0 = Math.min(1.6, Math.max(0.35, (fromRect.width || w) / w));
   const lift = Math.min(arc, Math.abs(tx - sx) * 0.12 + 8);
-  wrap.style.transform = `translate(${sx}px, ${sy}px) scale(${s0}) rotate(${fromRot}deg)`;
+  wrap.style.transform = `translate(${sx}px, ${sy}px) scale(${s0})`;
   $("#fx").append(wrap);
   const anim = wrap.animate([
-    { transform: `translate(${sx}px, ${sy}px) scale(${s0}) rotate(${fromRot}deg)` },
-    { transform: `translate(${(sx + tx) / 2}px, ${(sy + ty) / 2 - lift}px) scale(${(s0 + 1) / 2 * 1.04}) rotate(${(fromRot + rotateTo) / 2}deg)`, offset: 0.5 },
-    { transform: `translate(${tx}px, ${ty}px) scale(1) rotate(${rotateTo}deg)` },
+    { transform: `translate(${sx}px, ${sy}px) scale(${s0})` },
+    { transform: `translate(${(sx + tx) / 2}px, ${(sy + ty) / 2 - lift}px) scale(${(s0 + 1) / 2 * 1.04})`, offset: 0.5 },
+    { transform: `translate(${tx}px, ${ty}px) scale(1)` },
   ], { duration: dur, easing: "cubic-bezier(.45,.05,.25,1)", fill: "forwards" });
   await anim.finished.catch(() => {});
   if (!keep) wrap.remove();
@@ -1121,9 +1150,9 @@ async function fly(fromRect, toRect, id, { dur = 420, faceDown = false, rotateTo
 function livePileTargetRect() {
   const pile = $("#livePile");
   const r = pile.getBoundingClientRect();
-  const w = pileW() || r.width / 1.6;
-  // Matches `.live-pile .card { right: calc(var(--pile-card-w) * .3) }`.
-  return new DOMRect(r.right - w * 1.3, r.top + r.height / 2 - (w * 1.4) / 2, w, w * 1.4);
+  const w = pileW();
+  // Matches `.live-pile .card { right: 0 }`: the top card sits at the right.
+  return new DOMRect(r.right - w, r.top + r.height / 2 - (w * 1.4) / 2, w, w * 1.4);
 }
 const pileW = () => $("#drawPile").offsetWidth || 70;
 function pushLive(id) { S.liveShown.push(id); drawLive(S.liveShown); }
@@ -1190,7 +1219,7 @@ function newlyFinished(prev, next) {
 async function announceFinish(i, g) {
   const p = g.players[i], n = g.players.length, f = finishOf(p);
   const el = $("#announce");
-  el.innerHTML = `<span class="announce-place ${f === "legal" ? "" : "bad"}">${placeLabel(p, n) === "last" ? "Last" : ordinal(p.place)}</span><span>${finishText(i, p, n)}</span>`;
+  el.innerHTML = `<span class="announce-place ${f === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span><span>${finishText(i, p, n)}</span>`;
   el.classList.remove("show"); void el.offsetWidth; el.classList.add("show");
   narrate(finishText(i, p, n), f === "legal" ? "" : "bad");
   if (i === S.seat) (f === "legal" ? Sound.win : Sound.bad)();
@@ -1218,7 +1247,7 @@ async function animateEvents(events, prev, next) {
         S.lastActor = who;
         const note = playNote(e.card, 1, events, idx);
         narrate(`${nameOf(who)} ${verb(who, "play", "plays")} <b class="${isRed(e.card) ? "red" : ""}">${short(e.card)}</b>.${note ? ` <span class="note">${note}</span>` : ""}`);
-        await fly(from, livePileTargetRect(), e.card, { dur: me ? 300 : 520, fromRot: src ? 0 : 0, rotateTo: rot(e.card), hideSource: src });
+        await fly(from, livePileTargetRect(), e.card, { dur: me ? 300 : 520, hideSource: src && !(Number(src.dataset.count) > 1) ? src : null });
         Sound.snap();
         pushLive(e.card);
         await hold(HOLD_BOT);
@@ -1242,7 +1271,7 @@ async function animateEvents(events, prev, next) {
         narrate(`${nameOf(who)} ${verb(who, "pick", "picks")} up <b>${Number(e.cards.length)}</b> card${e.cards.length === 1 ? "" : "s"}.`, me ? "bad" : "");
         const cards = e.cards.slice(-LIVE_FAN);
         clearLive();
-        await Promise.all(cards.map((c, k) => nap(k * 60 * S.speed).then(() => fly(from, to, c, { dur: 460, fromRot: rot(c) }))));
+        await Promise.all(cards.map((c, k) => nap(k * 60 * S.speed).then(() => fly(from, to, c, { dur: 460 }))));
         await hold(HOLD_BOT);
         break;
       }
@@ -1258,7 +1287,7 @@ async function animateEvents(events, prev, next) {
         const cards = S.liveShown.slice(-LIVE_FAN);
         await nap(260 * S.speed);
         clearLive();
-        await Promise.all(cards.map((c, k) => nap(k * 50 * S.speed).then(() => fly(from, to, c, { dur: 500, fromRot: rot(c), rotateTo: 180 + rot(c), faceDown: false }))));
+        await Promise.all(cards.map((c, k) => nap(k * 50 * S.speed).then(() => fly(from, to, c, { dur: 500 }))));
         if (r === "9" && next.live.length) { S.liveShown = []; drawLive(next.live); }
         await nap(380 * S.speed);
         break;
@@ -1277,7 +1306,7 @@ async function animateEvents(events, prev, next) {
         if (e.ok) {
           S.lastActor = who;
           narrate(`${nameOf(who)} ${verb(who, "flip", "flips")} <b>${short(e.card)}</b> from the deck. It plays.`);
-          await fly(from, livePileTargetRect(), e.card, { dur: 500, rotateTo: rot(e.card) });
+          await fly(from, livePileTargetRect(), e.card, { dur: 500 });
           pushLive(e.card);
           await hold(HOLD_BOT);
         } else {
@@ -1296,7 +1325,7 @@ async function animateEvents(events, prev, next) {
         if (e.ok) {
           S.lastActor = who;
           narrate(`${nameOf(who)} ${verb(who, "turn", "turns")} over <b>${short(e.card)}</b>. It plays.`);
-          await fly(from, livePileTargetRect(), e.card, { dur: 540, rotateTo: rot(e.card), hideSource: hideSrc });
+          await fly(from, livePileTargetRect(), e.card, { dur: 540, hideSource: hideSrc });
           Sound.snap();
           pushLive(e.card);
           await hold(HOLD_BOT);
@@ -1314,7 +1343,7 @@ async function animateEvents(events, prev, next) {
         callout(`9 draws ${short(e.card)}`);
         Sound.flip();
         narrate(`The 9 draws <b>${short(e.card)}</b> from the discard.`);
-        await fly(cardRect($("#discardPile"), pileW()), livePileTargetRect(), e.card, { dur: 540, rotateTo: rot(e.card) });
+        await fly(cardRect($("#discardPile"), pileW()), livePileTargetRect(), e.card, { dur: 540 });
         pushLive(e.card);
         await nap(300 * S.speed);
         break;
@@ -1331,8 +1360,6 @@ async function animateEvents(events, prev, next) {
       }
       case "reverse":
         callout("Reverse");
-        $("#dirRing").classList.toggle("ccw", e.direction === -1);
-        $("#dirRing").classList.remove("spin"); void $("#dirRing").offsetWidth; $("#dirRing").classList.add("spin");
         await nap(520 * S.speed);
         break;
       case "skip": {
@@ -1356,7 +1383,7 @@ function showHint(action) {
   if (S.hintSig !== S.lastSig || S.busy || S.queue.length || !isLegalNow(action)) return;
   let el = null, text = "";
   if (action < 52) {
-    el = $(`#hand .card[data-card="${action}"]`) || $(`#mySlots .card[data-card="${action}"]`);
+    el = $(`#hand .card[data-card="${action}"]`) || $(`#hand .card[data-rank="${rankIx(action)}"]`) || $(`#mySlots .card[data-card="${action}"]`);
     text = `Shark would play <b>${short(action)}</b>.`;
   } else if (action === A_PICKUP) { el = $(`#actionBar [data-act="${A_PICKUP}"]`); text = "Shark would <b>pick up the pile</b>."; }
   else if (action === A_REVEAL) { el = $(`#actionBar [data-act="${A_REVEAL}"]`); text = "Shark would <b>flip the top of the deck</b>."; }
@@ -1381,7 +1408,7 @@ function showResult() {
     const p = g.players[i];
     const cards = [...(p.hand || []), ...p.face_up.flat(), ...(p.face_down_cards || []).filter((c) => c !== null)];
     const f = finishOf(p);
-    const tag = hasPlace(p) ? `<span class="standing ${f === "legal" ? "" : "bad"}">${placeLabel(p, n) === "last" ? "Last" : ordinal(p.place)}</span>` : `<span class="standing none"></span>`;
+    const tag = hasPlace(p) ? `<span class="standing ${f === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span>` : `<span class="standing none"></span>`;
     const why = f === "eights" ? "8s" : f === "illegal" ? "illegal" : "";
     return `<div class="reveal-row ${i === S.seat ? "is-me" : ""}">${placed ? tag : ""}<span class="name">${esc(r.seats[i]?.avatar ?? "")} ${nameOf(i)}${why ? ` <small class="why">${why}</small>` : ""}</span><div class="cards">${
       cards.length ? cards.map((c) => cardHTML(c, { tiny: true })).join("") : '<span class="muted small">No cards left</span>'}</div></div>`;

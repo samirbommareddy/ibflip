@@ -6,7 +6,7 @@
   const NAMES = ["Yolo", "Milo", "Basil", "Nova", "Dex"];
   const LONG = "Bartholomew_the_Unshuffled";
   const range = (a, n) => Array.from({ length: n }, (_, i) => a + i);
-  function build({ n = 2, status = "playing", seen = 8, oppHand = 8, myHand = 1, stacked = false, long = false, mine = "done", deck = 0, live = 4, discard = 30 }) {
+  function build({ n = 2, status = "playing", seen = 8, oppHand = 8, myHand = 1, stacked = false, long = false, mine = "done", deck = 0, live = 4, discard = 30, everyRank = false, finished = false }) {
     let next = 0;
     const take = (k) => { const out = range(next, k).map((c) => c % 52); next += k; return out; };
     const seats = range(0, n).map((i) => ({
@@ -19,7 +19,14 @@
       face_up: stacked ? [take(4), take(3), take(2)] : [take(1), take(1), take(1)],
       face_down: [true, true, true], active: true, finish: null, place: null, ready: i % 2 === 1,
     }));
-    const hand = take(myHand);
+    // everyRank: one card of each of the 13 ranks plus five pairs (18 cards,
+    // 13 stacks), so the hand row is as wide as it can get.
+    let hand = everyRank ? [...range(0, 13).map((k) => k * 4), 1, 5, 9, 13, 17] : take(myHand);
+    if (finished) {
+      hand = [];
+      Object.assign(players[0], { hand_count: 0, face_up: [[], [], []], face_down: [false, false, false], place: 1, finish: "legal" });
+      mine = "none";
+    }
     const liveCards = take(live);
     const legal = { cards: [], pick_up: false, reveal: false, end_group: false, face_down: [] };
     if (mine === "done") legal.end_group = true;
@@ -30,7 +37,7 @@
       type: "state", you: 0, events: [],
       room: { code: "FIXTUR", status, host: 0, seats, game_no: 1, hard_available: true },
       game: {
-        status, phase: playing ? "MIDDLE_GAME" : "FIXING_HANDS", current: playing ? 0 : null, direction: 1,
+        status, phase: playing ? "MIDDLE_GAME" : "FIXING_HANDS", current: playing ? (finished ? 1 : 0) : null, direction: 1,
         four_loop: false, nine_draw: false, winner: null, loser: null, live: playing ? liveCards : [], ace_one: [],
         target: playing ? (liveCards[liveCards.length - 1] >> 2) : null, discard_count: discard, discard_top: null,
         draw_count: deck, start_card: null, group_rank: mine === "done" ? (liveCards[liveCards.length - 1] >> 2) : null,
@@ -45,6 +52,8 @@
     "2p-stress": { n: 2, seen: 16, oppHand: 18, myHand: 18, stacked: true, long: true, mine: "play" },
     "5p-stress": { n: 5, seen: 14, oppHand: 16, myHand: 18, stacked: true, long: true, mine: "play" },
     "4p-setup": { n: 4, status: "fixing", seen: 2, oppHand: 3, myHand: 3, deck: 14, live: 0, discard: 0 },
+    "3p-ranks": { n: 3, seen: 6, oppHand: 12, myHand: 18, everyRank: true, mine: "play", deck: 5 },
+    "4p-finished": { n: 4, seen: 3, oppHand: 6, finished: true, live: 5 },
   };
   window.__FIXTURES = Object.keys(FIX);
   window.__fixture = async (name) => {

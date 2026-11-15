@@ -57,18 +57,20 @@ the MSI server is unavailable; the interface reports where saving succeeded.
 ## Layout and overflow checks
 
 The table keeps every zone in normal flow: opponents sit in one wrapping row
-(in turn order after you), then the turn-order indicator, the piles and the
-line saying what just happened. Text on the board is at least 14px on
-desktop and 13px on phones. When space runs out, opponents wrap and then
-collapse to one line each, and the table area scrolls on its own; the page
-never scrolls horizontally.
+(in turn order after you; the current player's name is underlined and the
+next player carries a "Next" tag), then the piles and the line saying what
+just happened. Text on the board is at least 14px on desktop and 13px on
+phones. When space runs out, opponents wrap and then collapse to one line
+each (below 420px of height, a column of one-line rows beside the piles),
+and the table area scrolls on its own; the page never scrolls horizontally.
 
 `scripts/ui-overflow-matrix.sh [url] [--verbose]` checks this. It needs a
 local server and `agent-browser`, injects the dev-only files under
 `tests/ui/` (they are never served to players), and renders synthetic table
 states (2-player, 5-player, stress: 16+ seen cards, 18-card hands, stacked
-face-up slots, long names; and 4-player setup) at desktop, phone, 125-200%
-browser zoom and 20/24px text sizes. `tests/ui/overflow-check.js` reports
+face-up slots, long names; a hand of all 13 ranks; 4-player setup; and a
+finished player watching) at desktop, phone, tablet portrait, short laptop
+and landscape phone sizes, 125-200% browser zoom and 20/24px text sizes. `tests/ui/overflow-check.js` reports
 elements outside the viewport, clipped text without an ellipsis, overlapping
 board zones and text below the minimum size. Every row should report 0.
 
