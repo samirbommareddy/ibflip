@@ -896,7 +896,10 @@ a {
   align-items: flex-start;
   gap: 0.5rem;
 }
+/* An opponent's hand is a small fan of smaller backs with a count, so it
+   reads apart from the flat, full-size face-down cards on their table. */
 .opp-hand {
+  --hand-card-w: calc(var(--opp-card-w) * 0.78);
   flex: none;
   position: relative;
   width: calc(var(--opp-card-w) + 6px);
@@ -904,17 +907,40 @@ a {
 }
 .opp-hand .card {
   position: absolute;
-  --card-w: var(--opp-card-w);
-  right: 0;
-  bottom: 0;
-}
-.opp-hand .card:nth-last-of-type(2) {
-  right: 3px;
+  --card-w: var(--hand-card-w);
+  left: 50%;
   bottom: 3px;
+  margin-left: calc(var(--hand-card-w) / -2);
+  transform-origin: 50% 100%;
 }
-.opp-hand .card:nth-last-of-type(3) {
-  right: 6px;
-  bottom: 6px;
+.opp-hand[data-n="2"] .card:nth-of-type(1) {
+  transform: rotate(-6deg);
+}
+.opp-hand[data-n="2"] .card:nth-of-type(2) {
+  transform: rotate(6deg);
+}
+.opp-hand[data-n="3"] .card:nth-of-type(1) {
+  transform: rotate(-9deg);
+}
+.opp-hand[data-n="3"] .card:nth-of-type(3) {
+  transform: rotate(9deg);
+}
+.opp-hand-count {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  min-width: 1.5em;
+  padding: 0 0.3em;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 0 0 2px var(--paper);
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1.4;
+  text-align: center;
 }
 .seen-btn {
   position: relative;
@@ -1038,6 +1064,10 @@ a {
   inset: var(--peek) 9px 4px 0;
   border: 1px dashed var(--line);
   border-radius: 3px;
+}
+/* A used-up table position on an opponent's side stays quiet. */
+.seat .slot.empty::before {
+  border-color: color-mix(in srgb, var(--line) 55%, transparent);
 }
 
 /* When only one seat fits per row (narrow phones, zoom, large text), each
@@ -1180,33 +1210,20 @@ a {
 .hand .card.selected {
   --lift: -0.625rem;
 }
-/* Not playable now: a muted face, still fully opaque. */
+/* Not playable now: the same card face and edge (opaque, so overlapping
+   neighbours never show through) with its ink faded and desaturated. The
+   playable cards keep the accent ring, so the difference is not colour alone. */
 .hand .card.dim {
-  color: var(--muted);
-  background: var(--surface);
-  border-color: var(--line);
   box-shadow: none;
+}
+.hand .card.dim > *,
+.hand .card.dim::after {
+  opacity: 0.42;
+  filter: saturate(0.7);
 }
 .hand .card.selected {
   background: var(--accent-soft);
   box-shadow: 0 0 0 3px var(--accent);
-}
-/* Same-rank cards in your hand are one stack with a count. */
-.card .count {
-  position: absolute;
-  left: 8%;
-  bottom: 6%;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: var(--label);
-  font-weight: 750;
-  line-height: 1.2;
-}
-.hand .card.dim .count {
-  background: var(--line);
-  color: var(--text);
 }
 /* Cards your opponents saw you pick up carry a small eye mark. */
 .hand .card.known-mark::after {

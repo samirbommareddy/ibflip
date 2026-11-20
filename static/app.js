@@ -160,7 +160,7 @@ function cardHTML(id, { cls = "", tiny = false, extra = "", count = 1 } = {}) {
   const label = count > 1 ? `${count} ${RANK_NAME[r] ?? r}s` : cardName(id);
   return `<div class="card ${isRed(id) ? "red" : ""} ${face ? "face" : ""} ${tiny ? "tiny" : ""} ${cls}" data-card="${id}" role="img" aria-label="${label}" ${extra}>
     <span class="ix tl" aria-hidden="true"><b>${r}</b><i>${s}</i></span>
-    <span class="pip" aria-hidden="true">${face ? r : s}</span>${count > 1 ? `<span class="count" aria-hidden="true">×${count}</span>` : ""}</div>`;
+    <span class="pip" aria-hidden="true">${face ? r : s}</span></div>`;
 }
 function cardEl(id, opts) {
   const t = document.createElement("template");
@@ -766,8 +766,11 @@ function renderSeats() {
     const tag = n > 2 && !hasPlace(p) ? `<span class="next-tag ${next === i ? "" : "off"}">Next</span>` : "";
     setHTML($(".seat-head", el), `<div class="avatar">${esc(s.avatar ?? "🙂")}${s.kind === "human" ? `<span class="dot ${s.connected ? "" : "off"}"></span>` : ""}</div>
         <div class="seat-text"><div class="seat-name" title="${esc(s.name ?? "Player")}">${esc(s.name ?? "Player")}</div><div class="seat-sub">${sub}${tag}</div></div>${hasPlace(p) ? `<span class="place-badge ${finishOf(p) === "legal" ? "" : "bad"}">${placeLabel(p, n)}</span>` : ""}`);
-    // A short stack of backs stands in for the hand; the count is in text.
-    setHTML($(".opp-hand", el), Array.from({ length: Math.min(hc, 3) }, () => cardHTML(null)).join(""));
+    // A small fan of backs with a count stands in for the hand (the count is
+    // also in the seat text, so the badge is hidden from screen readers).
+    const handEl = $(".opp-hand", el);
+    handEl.dataset.n = Math.min(hc, 3);
+    setHTML(handEl, Array.from({ length: Math.min(hc, 3) }, () => cardHTML(null)).join("") + (hc ? `<span class="opp-hand-count" aria-hidden="true">${hc}</span>` : ""));
     const seen = $(".seen-btn", el);
     const kn = p.known.length;
     seen.classList.toggle("hidden", !kn);
@@ -974,7 +977,11 @@ function renderMe() {
   const buttons = [];
   if (fixing) buttons.push(["Ready", "primary", "ready"]);
   if (mine) {
-    if (L.end_group) buttons.push(["Done", "primary", A_END]);
+    // When Done is the only legal move the turn ends on its own (auto-act),
+    // so the button never shows. It returns only as a fallback if that auto
+    // Done was sent for this exact state and its reply never came.
+    const autoDone = autoActFor(g) === A_END && S.autoSentSig !== S.lastSig;
+    if (L.end_group && !autoDone) buttons.push(["Done", "primary", A_END]);
     if (L.pick_up) buttons.push(["Pick up pile", "danger", A_PICKUP]);
     if (L.reveal) buttons.push(["Flip deck top", "primary", A_REVEAL]);
   }
@@ -995,7 +1002,7 @@ function handLayout(hand, n) {
 }
 
 // Same-rank hand cards are one stack: the card shown on top is the one a
-// click plays (or picks, in setup), and a badge says how many there are.
+// click plays (or picks, in setup).
 function handStacks(g, { mine, fixing, legalCards }) {
   const byRank = new Map();
   for (const id of [...g.hand].sort((a, b) => a - b)) {
